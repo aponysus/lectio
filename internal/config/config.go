@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -12,6 +13,8 @@ type Config struct {
 	HTTPAddr          string
 	LogLevel          slog.Level
 	DBPath            string
+	MigrationsDir     string
+	AutoMigrate       bool
 	SessionCookieName string
 	CSRFCookieName    string
 	CSRFHeaderName    string
@@ -28,6 +31,7 @@ func Load() (Config, error) {
 		HTTPAddr:          getEnv("LECTIO_ADDR", ":8080"),
 		LogLevel:          parseLogLevel(getEnv("LECTIO_LOG_LEVEL", "info")),
 		DBPath:            getEnv("LECTIO_DB_PATH", "./devdata/lectio.db"),
+		MigrationsDir:     getEnv("LECTIO_MIGRATIONS_DIR", "./migrations"),
 		SessionCookieName: "lectio_session",
 		CSRFCookieName:    "lectio_csrf",
 		CSRFHeaderName:    "X-CSRF-Token",
@@ -36,6 +40,7 @@ func Load() (Config, error) {
 		SessionSecret:     strings.TrimSpace(os.Getenv("LECTIO_SESSION_SECRET")),
 		CSRFSecret:        strings.TrimSpace(os.Getenv("LECTIO_CSRF_SECRET")),
 	}
+	cfg.AutoMigrate = getEnvBool("LECTIO_AUTO_MIGRATE", cfg.Env != "production")
 
 	if cfg.BootstrapPassword == "" {
 		cfg.BootstrapPassword = "change-me"
@@ -77,4 +82,18 @@ func parseLogLevel(value string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }

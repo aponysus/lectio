@@ -12,6 +12,7 @@ import (
 
 	"github.com/aponysus/lectio/internal/config"
 	"github.com/aponysus/lectio/internal/server"
+	"github.com/aponysus/lectio/internal/store"
 )
 
 func main() {
@@ -22,7 +23,28 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	srv := server.New(cfg, logger)
+	db, err := store.Open(context.Background(), store.OpenConfig{
+		Path:          cfg.DBPath,
+		MigrationsDir: cfg.MigrationsDir,
+		AutoMigrate:   cfg.AutoMigrate,
+	})
+	if err != nil {
+		logger.Error("failed to open sqlite store", "error", err, "path", cfg.DBPath)
+		os.Exit(1)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.Error("failed to close sqlite store", "error", closeErr)
+		}
+	}()
+	bootstrapUser, err := db.Users().EnsureBootstrapUser(context.Background(), cfg.BootstrapEmail, cfg.BootstrapPassword)
+	if err != nil {
+		logger.Error("failed to ensure bootstrap user", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("bootstrap user ready", "user_id", bootstrapUser.ID, "email", bootstrapUser.Email)
+
+	srv := server.New(cfg, logger, db)
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,

@@ -1,22 +1,25 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aponysus/lectio/internal/config"
+	"github.com/aponysus/lectio/internal/store"
 	"github.com/aponysus/lectio/ui"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -24,22 +27,15 @@ const (
 	sessionIdleTimeout = 24 * time.Hour
 )
 
-type sessionState struct {
-	ExpiresAt time.Time
-	LastSeen  time.Time
-}
-
 type Server struct {
 	cfg          config.Config
 	logger       *slog.Logger
+	store        *store.Store
 	staticFS     fs.FS
 	staticServer http.Handler
-
-	mu       sync.RWMutex
-	sessions map[string]sessionState
 }
 
-func New(cfg config.Config, logger *slog.Logger) *Server {
+func New(cfg config.Config, logger *slog.Logger, db *store.Store) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -48,9 +44,9 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	return &Server{
 		cfg:          cfg,
 		logger:       logger,
+		store:        db,
 		staticFS:     assets,
 		staticServer: http.FileServer(http.FS(assets)),
-		sessions:     make(map[string]sessionState),
 	}
 }
 
@@ -109,10 +105,35 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	s.writeJSON(w, http.StatusOK, map[string]any{
+	statusCode := http.StatusOK
+	appStatus := "ok"
+	dbStatus := "ok"
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	if err := s.store.Ping(ctx); err != nil {
+		statusCode = http.StatusServiceUnavailable
+		appStatus = "degraded"
+		dbStatus = "unavailable"
+		s.logger.Error("health check ping failed", "error", err)
+	}
+
+	migrationState, err := s.store.MigrationState(ctx)
+	if err != nil {
+		statusCode = http.StatusServiceUnavailable
+		appStatus = "degraded"
+		dbStatus = "unavailable"
+		s.logger.Error("health check migration state failed", "error", err)
+	}
+
+	s.writeJSON(w, statusCode, map[string]any{
 		"data": map[string]any{
-			"status":                  "ok",
-			"db_status":               "not_connected",
+			"status":                  appStatus,
+			"db_status":               dbStatus,
+			"schema_version":          migrationState.CurrentVersion,
+			"latest_schema_version":   migrationState.LatestVersion,
+			"schema_dirty":            migrationState.Dirty,
 			"replication_lag_seconds": nil,
 			"timestamp":               time.Now().UTC().Format(time.RFC3339),
 		},
@@ -129,11 +150,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(s.cfg.BootstrapPassword)) != 1 {
+	user, err := s.lookupLoginUser(r.Context(), req.Email)
+	if errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, r, http.StatusUnauthorized, "unauthorized", "Invalid credentials", nil)
 		return
 	}
-	if s.cfg.BootstrapEmail != "" && !strings.EqualFold(strings.TrimSpace(req.Email), s.cfg.BootstrapEmail) {
+	if err != nil {
+		s.writeError(w, r, http.StatusInternalServerError, "internal_error", "Could not load user", nil)
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		s.writeError(w, r, http.StatusUnauthorized, "unauthorized", "Invalid credentials", nil)
 		return
 	}
@@ -150,9 +176,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	s.mu.Lock()
-	s.sessions[sessionID] = sessionState{ExpiresAt: now.Add(sessionTTL), LastSeen: now}
-	s.mu.Unlock()
+	if existingSession, err := r.Cookie(s.cfg.SessionCookieName); err == nil && existingSession.Value != "" {
+		_ = s.store.Sessions().Delete(r.Context(), existingSession.Value)
+	}
+	if err := s.store.Sessions().Create(r.Context(), store.Session{
+		ID:         sessionID,
+		UserID:     user.ID,
+		ExpiresAt:  now.Add(sessionTTL),
+		LastSeenAt: now,
+	}); err != nil {
+		s.writeError(w, r, http.StatusInternalServerError, "internal_error", "Could not create session", nil)
+		return
+	}
 
 	secure := s.cfg.Env == "production"
 	http.SetCookie(w, &http.Cookie{
@@ -181,9 +216,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(s.cfg.SessionCookieName); err == nil && cookie.Value != "" {
-		s.mu.Lock()
-		delete(s.sessions, cookie.Value)
-		s.mu.Unlock()
+		_ = s.store.Sessions().Delete(r.Context(), cookie.Value)
 	}
 
 	secure := s.cfg.Env == "production"
@@ -217,20 +250,50 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 		}
 
 		now := time.Now().UTC()
-		s.mu.Lock()
-		state, ok := s.sessions[cookie.Value]
-		if !ok || now.After(state.ExpiresAt) || now.Sub(state.LastSeen) > sessionIdleTimeout {
-			delete(s.sessions, cookie.Value)
-			s.mu.Unlock()
+		session, err := s.store.Sessions().GetByID(r.Context(), cookie.Value)
+		if errors.Is(err, store.ErrNotFound) {
 			s.writeError(w, r, http.StatusUnauthorized, "unauthorized", "Session expired", nil)
 			return
 		}
-		state.LastSeen = now
-		s.sessions[cookie.Value] = state
-		s.mu.Unlock()
+		if err != nil {
+			s.writeError(w, r, http.StatusInternalServerError, "internal_error", "Could not validate session", nil)
+			return
+		}
+		if now.After(session.ExpiresAt) || now.Sub(session.LastSeenAt) > sessionIdleTimeout {
+			_ = s.store.Sessions().Delete(r.Context(), cookie.Value)
+			s.writeError(w, r, http.StatusUnauthorized, "unauthorized", "Session expired", nil)
+			return
+		}
+		if err := s.store.Sessions().Touch(r.Context(), cookie.Value, now); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				s.writeError(w, r, http.StatusUnauthorized, "unauthorized", "Session expired", nil)
+				return
+			}
+			s.writeError(w, r, http.StatusInternalServerError, "internal_error", "Could not refresh session", nil)
+			return
+		}
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) lookupLoginUser(ctx context.Context, email string) (store.User, error) {
+	normalizedEmail := strings.TrimSpace(strings.ToLower(email))
+	if normalizedEmail != "" {
+		return s.store.Users().GetByEmail(ctx, normalizedEmail)
+	}
+
+	if configuredEmail := strings.TrimSpace(strings.ToLower(s.cfg.BootstrapEmail)); configuredEmail != "" {
+		user, err := s.store.Users().GetByEmail(ctx, configuredEmail)
+		if err == nil {
+			return user, nil
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return store.User{}, err
+		}
+	}
+
+	return s.store.Users().GetFirst(ctx)
 }
 
 func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
