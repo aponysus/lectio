@@ -47,6 +47,7 @@ type Entry struct {
 	Reflection string
 	Mood       string
 	Energy     *int
+	Tags       []Tag
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
@@ -71,11 +72,30 @@ type Resonance struct {
 }
 
 type EntryRepository interface {
-	Create(context.Context, Entry) (Entry, error)
+	Create(context.Context, CreateEntryInput) (Entry, error)
 	GetByID(context.Context, int64) (Entry, error)
-	List(context.Context, EntryListFilter) ([]Entry, error)
+	List(context.Context, EntryListFilter) (EntryListResult, error)
 	Update(context.Context, Entry) (Entry, error)
 	Delete(context.Context, int64) error
+}
+
+type CreateEntryInput struct {
+	SourceID   *int64
+	Source     SourceInput
+	Passage    string
+	Reflection string
+	Mood       string
+	Energy     *int
+	Tags       []string
+}
+
+type SourceInput struct {
+	ID        *int64
+	Title     string
+	Author    string
+	Year      *int
+	Tradition string
+	Language  string
 }
 
 type EntryListFilter struct {
@@ -87,10 +107,16 @@ type EntryListFilter struct {
 	PageSize int
 }
 
+type EntryListResult struct {
+	Entries []Entry
+	Total   int64
+}
+
 type SourceRepository interface {
 	Create(context.Context, Source) (Source, error)
 	GetByID(context.Context, int64) (Source, error)
 	List(context.Context, SourceListFilter) ([]Source, error)
+	Resolve(context.Context, SourceInput) (Source, error)
 	Update(context.Context, Source) (Source, error)
 }
 
@@ -102,6 +128,7 @@ type SourceListFilter struct {
 }
 
 type TagRepository interface {
+	Ensure(context.Context, []string) ([]Tag, error)
 	GetBySlug(context.Context, string) (Tag, error)
 	List(context.Context, TagListFilter) ([]Tag, error)
 	CoOccurrence(context.Context) ([]TagPair, error)

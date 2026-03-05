@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,8 +72,8 @@ func (s *Server) Handler() http.Handler {
 			protected.Use(s.requireSession)
 			protected.Use(s.csrfMiddleware)
 
-			protected.Get("/entries", s.notImplemented("GET /api/entries"))
-			protected.Post("/entries", s.notImplemented("POST /api/entries"))
+			protected.Get("/entries", s.handleListEntries)
+			protected.Post("/entries", s.handleCreateEntry)
 			protected.Get("/entries/{id}", s.notImplemented("GET /api/entries/{id}"))
 			protected.Put("/entries/{id}", s.notImplemented("PUT /api/entries/{id}"))
 			protected.Delete("/entries/{id}", s.notImplemented("DELETE /api/entries/{id}"))
@@ -241,6 +242,97 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Source struct {
+			ID        *int64 `json:"id"`
+			Title     string `json:"title"`
+			Author    string `json:"author"`
+			Year      *int   `json:"year"`
+			Tradition string `json:"tradition"`
+			Language  string `json:"language"`
+		} `json:"source"`
+		Passage          string   `json:"passage"`
+		Reflection       string   `json:"reflection"`
+		Mood             string   `json:"mood"`
+		Energy           *int     `json:"energy"`
+		Tags             []string `json:"tags"`
+		ThreadID         *int64   `json:"thread_id"`
+		RevisitOfEntryID *int64   `json:"revisit_of_entry_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, r, http.StatusBadRequest, "validation_error", "Invalid request payload", []map[string]string{{"field": "body", "reason": "invalid_json"}})
+		return
+	}
+
+	details := validateCreateEntryRequest(req.Reflection, req.Passage, req.Energy, req.Source.ID, req.Source.Title, req.ThreadID, req.RevisitOfEntryID)
+	if len(details) > 0 {
+		s.writeError(w, r, http.StatusBadRequest, "validation_error", "Invalid request payload", details)
+		return
+	}
+
+	entry, err := s.store.Entries().Create(r.Context(), store.CreateEntryInput{
+		SourceID: req.Source.ID,
+		Source: store.SourceInput{
+			ID:        req.Source.ID,
+			Title:     req.Source.Title,
+			Author:    req.Source.Author,
+			Year:      req.Source.Year,
+			Tradition: req.Source.Tradition,
+			Language:  req.Source.Language,
+		},
+		Passage:    req.Passage,
+		Reflection: strings.TrimSpace(req.Reflection),
+		Mood:       req.Mood,
+		Energy:     req.Energy,
+		Tags:       req.Tags,
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, r, http.StatusNotFound, "not_found", "Source not found", nil)
+		return
+	}
+	if err != nil {
+		s.logger.Error("create entry failed", "error", err)
+		s.writeError(w, r, http.StatusInternalServerError, "internal_error", "Could not create entry", nil)
+		return
+	}
+
+	s.writeJSON(w, http.StatusCreated, map[string]any{
+		"data": entryResponse(entry),
+	})
+}
+
+func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
+	filter, details := parseEntryListFilter(r)
+	if len(details) > 0 {
+		s.writeError(w, r, http.StatusBadRequest, "validation_error", "Invalid request payload", details)
+		return
+	}
+
+	result, err := s.store.Entries().List(r.Context(), filter)
+	if err != nil {
+		s.logger.Error("list entries failed", "error", err)
+		s.writeError(w, r, http.StatusInternalServerError, "internal_error", "Could not list entries", nil)
+		return
+	}
+
+	hasNext := int64(filter.Page*filter.PageSize) < result.Total
+	data := make([]map[string]any, 0, len(result.Entries))
+	for _, entry := range result.Entries {
+		data = append(data, entryResponse(entry))
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"data": data,
+		"meta": map[string]any{
+			"page":      filter.Page,
+			"page_size": filter.PageSize,
+			"total":     result.Total,
+			"has_next":  hasNext,
+		},
+	})
+}
+
 func (s *Server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(s.cfg.SessionCookieName)
@@ -294,6 +386,128 @@ func (s *Server) lookupLoginUser(ctx context.Context, email string) (store.User,
 	}
 
 	return s.store.Users().GetFirst(ctx)
+}
+
+func validateCreateEntryRequest(reflection, passage string, energy *int, sourceID *int64, sourceTitle string, threadID *int64, revisitID *int64) []map[string]string {
+	details := make([]map[string]string, 0, 4)
+
+	reflection = strings.TrimSpace(reflection)
+	if reflection == "" {
+		details = append(details, map[string]string{"field": "reflection", "reason": "required"})
+	} else if len(reflection) > 10000 {
+		details = append(details, map[string]string{"field": "reflection", "reason": "too_long"})
+	}
+
+	if len(strings.TrimSpace(passage)) > 10000 {
+		details = append(details, map[string]string{"field": "passage", "reason": "too_long"})
+	}
+
+	if energy != nil && (*energy < 1 || *energy > 5) {
+		details = append(details, map[string]string{"field": "energy", "reason": "out_of_range"})
+	}
+
+	if sourceID == nil && strings.TrimSpace(sourceTitle) == "" {
+		details = append(details, map[string]string{"field": "source", "reason": "required"})
+	}
+	if threadID != nil {
+		details = append(details, map[string]string{"field": "thread_id", "reason": "not_supported_yet"})
+	}
+	if revisitID != nil {
+		details = append(details, map[string]string{"field": "revisit_of_entry_id", "reason": "not_supported_yet"})
+	}
+
+	return details
+}
+
+func parseEntryListFilter(r *http.Request) (store.EntryListFilter, []map[string]string) {
+	values := r.URL.Query()
+	filter := store.EntryListFilter{
+		Page:     1,
+		PageSize: 20,
+		Tag:      values.Get("tag"),
+	}
+	details := make([]map[string]string, 0, 4)
+
+	if raw := strings.TrimSpace(values.Get("source_id")); raw != "" {
+		sourceID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || sourceID <= 0 {
+			details = append(details, map[string]string{"field": "source_id", "reason": "invalid"})
+		} else {
+			filter.SourceID = &sourceID
+		}
+	}
+
+	if raw := strings.TrimSpace(values.Get("page")); raw != "" {
+		page, err := strconv.Atoi(raw)
+		if err != nil || page <= 0 {
+			details = append(details, map[string]string{"field": "page", "reason": "invalid"})
+		} else {
+			filter.Page = page
+		}
+	}
+
+	if raw := strings.TrimSpace(values.Get("page_size")); raw != "" {
+		pageSize, err := strconv.Atoi(raw)
+		if err != nil || pageSize <= 0 || pageSize > 100 {
+			details = append(details, map[string]string{"field": "page_size", "reason": "invalid"})
+		} else {
+			filter.PageSize = pageSize
+		}
+	}
+
+	if raw := strings.TrimSpace(values.Get("from")); raw != "" {
+		from, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			details = append(details, map[string]string{"field": "from", "reason": "invalid"})
+		} else {
+			filter.From = &from
+		}
+	}
+
+	if raw := strings.TrimSpace(values.Get("to")); raw != "" {
+		to, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			details = append(details, map[string]string{"field": "to", "reason": "invalid"})
+		} else {
+			filter.To = &to
+		}
+	}
+
+	if filter.From != nil && filter.To != nil && filter.From.After(*filter.To) {
+		details = append(details, map[string]string{"field": "date_range", "reason": "invalid"})
+	}
+
+	return filter, details
+}
+
+func entryResponse(entry store.Entry) map[string]any {
+	tagPayload := make([]map[string]any, 0, len(entry.Tags))
+	for _, tag := range entry.Tags {
+		tagPayload = append(tagPayload, map[string]any{
+			"id":          tag.ID,
+			"slug":        tag.Slug,
+			"label":       tag.Label,
+			"entry_count": tag.Count,
+			"created_at":  tag.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	payload := map[string]any{
+		"id":         entry.ID,
+		"source_id":  entry.SourceID,
+		"passage":    entry.Passage,
+		"reflection": entry.Reflection,
+		"mood":       entry.Mood,
+		"tags":       tagPayload,
+		"created_at": entry.CreatedAt.UTC().Format(time.RFC3339),
+		"updated_at": entry.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if entry.Energy != nil {
+		payload["energy"] = *entry.Energy
+	} else {
+		payload["energy"] = nil
+	}
+	return payload
 }
 
 func (s *Server) csrfMiddleware(next http.Handler) http.Handler {

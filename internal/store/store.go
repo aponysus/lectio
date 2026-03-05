@@ -82,6 +82,9 @@ func Open(ctx context.Context, cfg OpenConfig) (*Store, error) {
 	return &Store{
 		db:              db,
 		latestMigration: latest,
+		entries:         newEntryRepository(db),
+		sources:         newSourceRepository(db),
+		tags:            newTagRepository(db),
 		users:           newUserRepository(db),
 		sessions:        newSessionRepository(db),
 	}, nil
