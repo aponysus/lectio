@@ -1,5 +1,19 @@
 const API_BASE = '/api'
 
+export class ApiError extends Error {
+  status: number
+  code?: string
+  details?: Array<Record<string, string>>
+
+  constructor(message: string, status: number, code?: string, details?: Array<Record<string, string>>) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
@@ -30,11 +44,19 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const payload = text ? JSON.parse(text) : null
 
   if (!response.ok) {
-    const message = payload?.error?.message ?? `Request failed (${response.status})`
-    throw new Error(message)
+    throw new ApiError(
+      payload?.error?.message ?? `Request failed (${response.status})`,
+      response.status,
+      payload?.error?.code,
+      payload?.error?.details,
+    )
   }
 
   return payload as T
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError
 }
 
 function readCookie(name: string): string | null {
