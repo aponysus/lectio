@@ -63,6 +63,10 @@ func (s *Store) ListEngagements(ctx context.Context, filters model.EngagementFil
 	if !filters.IncludeArchived {
 		where = append(where, "e.archived_at IS NULL")
 	}
+	if filters.Query != "" {
+		where = append(where, "LOWER(e.reflection) LIKE ?")
+		args = append(args, "%"+strings.ToLower(filters.Query)+"%")
+	}
 	if filters.SourceID != "" {
 		where = append(where, "e.source_id = ?")
 		args = append(args, filters.SourceID)
@@ -70,6 +74,9 @@ func (s *Store) ListEngagements(ctx context.Context, filters model.EngagementFil
 	if filters.AccessMode != "" {
 		where = append(where, "e.access_mode = ?")
 		args = append(args, filters.AccessMode)
+	}
+	if filters.HasLanguageNotes {
+		where = append(where, "COALESCE(note_stats.language_note_count, 0) > 0")
 	}
 
 	query := engagementSelectQuery
@@ -219,15 +226,24 @@ const engagementSelectQuery = `
 		e.revisit_priority,
 		e.is_reread_or_rewatch,
 		strftime('%Y-%m-%dT%H:%M:%SZ', e.created_at) AS created_at,
-		strftime('%Y-%m-%dT%H:%M:%SZ', e.updated_at) AS updated_at,
-		CASE
-			WHEN e.archived_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%SZ', e.archived_at)
-		END AS archived_at,
-		s.id,
-		s.title,
-		s.medium,
-		s.creator
+	strftime('%Y-%m-%dT%H:%M:%SZ', e.updated_at) AS updated_at,
+	CASE
+		WHEN e.archived_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%SZ', e.archived_at)
+	END AS archived_at,
+	COALESCE(note_stats.language_note_count, 0) AS language_note_count,
+	s.id,
+	s.title,
+	s.medium,
+	s.creator
 	FROM engagements e
+	LEFT JOIN (
+		SELECT
+			ln.engagement_id,
+			COUNT(ln.id) AS language_note_count
+		FROM language_notes ln
+		WHERE ln.archived_at IS NULL
+		GROUP BY ln.engagement_id
+	) note_stats ON note_stats.engagement_id = e.id
 	JOIN sources s ON s.id = e.source_id
 `
 
@@ -261,6 +277,7 @@ func scanEngagement(scanner engagementScanner) (model.Engagement, error) {
 		&engagement.CreatedAt,
 		&engagement.UpdatedAt,
 		&archivedAt,
+		&engagement.LanguageNoteCount,
 		&engagement.Source.ID,
 		&engagement.Source.Title,
 		&engagement.Source.Medium,

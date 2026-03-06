@@ -79,3 +79,60 @@ func TestEngagementLifecycle(t *testing.T) {
 		t.Fatalf("expected ErrNotFound after archive, got %v", err)
 	}
 }
+
+func TestListEngagementsFiltersByQuery(t *testing.T) {
+	t.Parallel()
+
+	db, err := Open(filepath.Join(t.TempDir(), "lectio.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("ApplyMigrations() error = %v", err)
+	}
+
+	store := New(db)
+	source, err := store.CreateSource(ctx, model.SourceInput{
+		Title:  "Searchable Source",
+		Medium: string(model.SourceMediumBook),
+	})
+	if err != nil {
+		t.Fatalf("CreateSource() error = %v", err)
+	}
+
+	_, err = store.CreateEngagement(ctx, model.EngagementInput{
+		SourceID:   source.ID,
+		EngagedAt:  "2026-03-06T10:00:00Z",
+		Reflection: "A note about tragic structure and dramatic irony.",
+	})
+	if err != nil {
+		t.Fatalf("CreateEngagement() error = %v", err)
+	}
+
+	_, err = store.CreateEngagement(ctx, model.EngagementInput{
+		SourceID:   source.ID,
+		EngagedAt:  "2026-03-06T11:00:00Z",
+		Reflection: "A separate note about syntax and cadence.",
+	})
+	if err != nil {
+		t.Fatalf("CreateEngagement() error = %v", err)
+	}
+
+	results, err := store.ListEngagements(ctx, model.EngagementFilters{
+		Query: "dramatic irony",
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListEngagements() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 engagement, got %d", len(results))
+	}
+	if results[0].Reflection != "A note about tragic structure and dramatic irony." {
+		t.Fatalf("unexpected engagement returned: %q", results[0].Reflection)
+	}
+}

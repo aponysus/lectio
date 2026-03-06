@@ -51,6 +51,7 @@ func NormalizeEngagementInput(input model.EngagementInput) (model.EngagementInpu
 }
 
 func NormalizeEngagementFilters(filters model.EngagementFilters) (model.EngagementFilters, error) {
+	filters.Query = strings.TrimSpace(filters.Query)
 	filters.SourceID = strings.TrimSpace(filters.SourceID)
 	filters.AccessMode = strings.ToUpper(strings.TrimSpace(filters.AccessMode))
 

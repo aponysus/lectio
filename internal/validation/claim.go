@@ -36,3 +36,16 @@ func NormalizeClaimInput(input model.ClaimInput) (model.ClaimInput, error) {
 
 	return input, nil
 }
+
+func NormalizeClaimFilters(filters model.ClaimFilters) (model.ClaimFilters, error) {
+	filters.Query = strings.TrimSpace(filters.Query)
+
+	if filters.Limit <= 0 {
+		filters.Limit = 20
+	}
+	if filters.Limit > 100 {
+		filters.Limit = 100
+	}
+
+	return filters, nil
+}

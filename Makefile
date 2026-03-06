@@ -1,4 +1,5 @@
 APP_NAME := lectio
+GO := GOTOOLCHAIN=go1.25.5 go
 
 .PHONY: dev dev-api dev-web test migrate-up migrate-status build-api build-web
 
@@ -9,22 +10,22 @@ dev:
 	wait
 
 dev-api:
-	go run ./cmd/lectio serve
+	$(GO) run ./cmd/lectio serve
 
 dev-web:
 	cd web && npm run dev -- --host 0.0.0.0
 
 test:
-	go test ./...
+	$(GO) test ./...
 
 migrate-up:
-	go run ./cmd/lectio migrate up
+	$(GO) run ./cmd/lectio migrate up
 
 migrate-status:
-	go run ./cmd/lectio migrate status
+	$(GO) run ./cmd/lectio migrate status
 
 build-api:
-	go build ./cmd/lectio
+	$(GO) build ./cmd/lectio
 
 build-web:
 	cd web && npm run build

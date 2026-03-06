@@ -65,6 +65,12 @@ type ClaimInput struct {
 	Notes              string
 }
 
+type ClaimFilters struct {
+	Query           string
+	Limit           int
+	IncludeArchived bool
+}
+
 func IsValidClaimType(value string) bool {
 	for _, claimType := range ClaimTypes {
 		if string(claimType) == value {

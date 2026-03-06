@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { useSession } from '../hooks/useSession'
+import { formFieldOnDarkClassName } from '../components/shared/formStyles'
 
 const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
@@ -37,12 +38,9 @@ export function LoginPage() {
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <section className="rounded-[2.5rem] border border-black/5 bg-white/70 p-8 shadow-card backdrop-blur lg:p-12">
           <p className="text-xs uppercase tracking-[0.35em] text-accent/80">Lectio</p>
-          <h1 className="mt-4 max-w-2xl font-display text-5xl leading-tight text-ink">
-            A private scaffold for inquiry-linked reading, viewing, and synthesis.
-          </h1>
+          <h1 className="mt-4 max-w-2xl font-display text-5xl leading-tight text-ink">A private workspace for serious source work.</h1>
           <p className="mt-6 max-w-xl text-base leading-7 text-ink/72">
-            This first foundation slice proves the stack, auth flow, migrations, database wiring, and application shell.
-            Source, engagement, and inquiry work now have a clean place to land.
+            Log encounters, connect them to live inquiries, extract claims, revisit unresolved material, and compress it into synthesis.
           </p>
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-black/5 bg-canvas/70 p-4">
@@ -55,7 +53,7 @@ export function LoginPage() {
             </div>
             <div className="rounded-2xl border border-black/5 bg-canvas/70 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-accent/80">Now</p>
-              <p className="mt-2 text-sm text-ink/80">Auth, status, migrations, and the first shell are live.</p>
+              <p className="mt-2 text-sm text-ink/80">Resume current work, capture the next encounter, or reopen what still needs thought.</p>
             </div>
           </div>
         </section>
@@ -70,7 +68,7 @@ export function LoginPage() {
                 {...register('password')}
                 type="password"
                 autoComplete="current-password"
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition focus:border-accent focus:bg-white/10"
+                className={formFieldOnDarkClassName}
               />
               {errors.password ? <span className="mt-2 block text-sm text-amber-300">{errors.password.message}</span> : null}
             </label>

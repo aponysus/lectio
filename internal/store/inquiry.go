@@ -153,6 +153,16 @@ func (s *Store) GetInquiry(ctx context.Context, id string) (model.Inquiry, error
 }
 
 func (s *Store) UpdateInquiry(ctx context.Context, id string, input model.InquiryInput) (model.Inquiry, error) {
+	currentStatus, err := s.inquiryStatusByID(ctx, id)
+	if err != nil {
+		return model.Inquiry{}, err
+	}
+
+	reactivatedAtExpr := "reactivated_at"
+	if currentStatus == string(model.InquiryStatusDormant) && input.Status == string(model.InquiryStatusActive) {
+		reactivatedAtExpr = "CURRENT_TIMESTAMP"
+	}
+
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE inquiries
 		SET
@@ -162,6 +172,7 @@ func (s *Store) UpdateInquiry(ctx context.Context, id string, input model.Inquir
 			why_it_matters = ?,
 			current_view = ?,
 			open_tensions = ?,
+			reactivated_at = `+reactivatedAtExpr+`,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND archived_at IS NULL
 	`,
@@ -336,6 +347,24 @@ func (s *Store) ensureInquiryExists(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+func (s *Store) inquiryStatusByID(ctx context.Context, id string) (string, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT status
+		FROM inquiries
+		WHERE id = ? AND archived_at IS NULL
+	`, id)
+
+	var status string
+	if err := row.Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+
+	return status, nil
 }
 
 func (s *Store) ensureEngagementExists(ctx context.Context, id string) error {

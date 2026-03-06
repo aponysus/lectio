@@ -5,3 +5,4 @@ bin/
 devdata/
 web/dist/
 web/node_modules/
+.claude/

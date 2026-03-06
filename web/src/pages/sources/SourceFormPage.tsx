@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createSource, getSource, type Source, type SourceInput, updateSource } from '../../api/client'
+import { useToast } from '../../components/feedback/ToastProvider'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { SourceForm } from '../../components/sources/SourceForm'
 import { PageHeader } from '../../components/shared/PageHeader'
 
@@ -10,6 +12,7 @@ type SourceFormPageProps = {
 
 export function SourceFormPage({ mode }: SourceFormPageProps) {
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const { sourceId } = useParams()
   const [source, setSource] = useState<Source | null>(null)
   const [loading, setLoading] = useState(mode === 'edit')
@@ -57,6 +60,7 @@ export function SourceFormPage({ mode }: SourceFormPageProps) {
           ? await createSource(input)
           : await updateSource(sourceId ?? '', input)
 
+      showToast({ message: mode === 'create' ? 'Source created.' : 'Source updated.' })
       navigate(`/sources/${saved.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save source')
@@ -96,9 +100,7 @@ export function SourceFormPage({ mode }: SourceFormPageProps) {
       />
 
       {loading ? (
-        <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-          Loading source...
-        </section>
+        <LoadingPanel label="Loading source form" />
       ) : (
         <SourceForm
           source={source}

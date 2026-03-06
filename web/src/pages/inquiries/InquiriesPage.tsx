@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { INQUIRY_STATUSES, type Inquiry, type ListInquiriesFilters, listInquiries } from '../../api/client'
 import { InquiryCard } from '../../components/inquiries/InquiryCard'
+import { InquiryListRow } from '../../components/inquiries/InquiryListRow'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { formFieldClassName } from '../../components/shared/formStyles'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
+import { type BrowseViewMode, ViewModeToggle } from '../../components/shared/ViewModeToggle'
 
 export function InquiriesPage() {
-  const [filters, setFilters] = useState<ListInquiriesFilters>({
-    q: '',
+  const [searchParams] = useSearchParams()
+  const [viewMode, setViewMode] = useState<BrowseViewMode>('list')
+  const [filters, setFilters] = useState<ListInquiriesFilters>(() => ({
+    q: searchParams.get('q') ?? '',
     status: '',
-  })
+  }))
   const [inquiries, setInquiries] = useState<Inquiry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,14 +64,24 @@ export function InquiriesPage() {
         }
       />
 
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 p-6 shadow-card backdrop-blur">
+      <section className="rounded-[1.5rem] border border-black/5 bg-white/70 p-5 shadow-card backdrop-blur">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-xs uppercase tracking-[0.22em] text-accent/80">Filters</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-ink/68">
+              {inquiries.length} {inquiries.length === 1 ? 'inquiry' : 'inquiries'}
+              {loading ? ' loading' : ' visible'}
+            </p>
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          </div>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label className="block xl:col-span-2">
             <span className="mb-2 block text-sm text-ink/75">Search title or question</span>
             <input
               value={filters.q ?? ''}
               onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
+              className={formFieldClassName}
             />
           </label>
 
@@ -74,7 +90,7 @@ export function InquiriesPage() {
             <select
               value={filters.status ?? ''}
               onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
+              className={formFieldClassName}
             >
               <option value="">All statuses</option>
               {INQUIRY_STATUSES.map((status) => (
@@ -94,9 +110,7 @@ export function InquiriesPage() {
       ) : null}
 
       {loading ? (
-        <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-          Loading inquiries...
-        </section>
+        <LoadingPanel label="Loading inquiries" variant="list" />
       ) : inquiries.length === 0 ? (
         <EmptyState
           title="No inquiries yet"
@@ -110,6 +124,12 @@ export function InquiriesPage() {
             </Link>
           }
         />
+      ) : viewMode === 'list' ? (
+        <section className="space-y-3">
+          {inquiries.map((inquiry) => (
+            <InquiryListRow key={inquiry.id} inquiry={inquiry} />
+          ))}
+        </section>
       ) : (
         <section className="grid gap-5 xl:grid-cols-2">
           {inquiries.map((inquiry) => (

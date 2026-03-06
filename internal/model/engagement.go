@@ -42,6 +42,7 @@ type Engagement struct {
 	CreatedAt          string        `json:"created_at"`
 	UpdatedAt          string        `json:"updated_at"`
 	ArchivedAt         *string       `json:"archived_at,omitempty"`
+	LanguageNoteCount  int           `json:"language_note_count"`
 	Source             SourceSummary `json:"source"`
 }
 
@@ -58,11 +59,21 @@ type EngagementInput struct {
 	IsRereadOrRewatch  bool
 }
 
+type EngagementCaptureInput struct {
+	Engagement      EngagementInput
+	InquiryIDs      []string
+	InlineInquiries []InquiryInput
+	Claims          []ClaimInput
+	LanguageNotes   []LanguageNoteInput
+}
+
 type EngagementFilters struct {
-	SourceID        string
-	AccessMode      string
-	Limit           int
-	IncludeArchived bool
+	Query            string
+	SourceID         string
+	AccessMode       string
+	HasLanguageNotes bool
+	Limit            int
+	IncludeArchived  bool
 }
 
 func IsValidAccessMode(value string) bool {

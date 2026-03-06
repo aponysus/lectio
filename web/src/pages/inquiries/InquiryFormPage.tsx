@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createInquiry, getInquiry, type Inquiry, type InquiryInput, updateInquiry } from '../../api/client'
+import { useToast } from '../../components/feedback/ToastProvider'
 import { InquiryForm } from '../../components/inquiries/InquiryForm'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 type InquiryFormPageProps = {
@@ -10,6 +12,7 @@ type InquiryFormPageProps = {
 
 export function InquiryFormPage({ mode }: InquiryFormPageProps) {
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const { inquiryId } = useParams()
   const [inquiry, setInquiry] = useState<Inquiry | null>(null)
   const [loading, setLoading] = useState(mode === 'edit')
@@ -57,6 +60,7 @@ export function InquiryFormPage({ mode }: InquiryFormPageProps) {
           ? await createInquiry(input)
           : await updateInquiry(inquiryId ?? '', input)
 
+      showToast({ message: mode === 'create' ? 'Inquiry created.' : 'Inquiry updated.' })
       navigate(`/inquiries/${saved.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save inquiry')
@@ -96,9 +100,7 @@ export function InquiryFormPage({ mode }: InquiryFormPageProps) {
       />
 
       {loading ? (
-        <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-          Loading inquiry...
-        </section>
+        <LoadingPanel label="Loading inquiry form" />
       ) : (
         <InquiryForm
           inquiry={inquiry}

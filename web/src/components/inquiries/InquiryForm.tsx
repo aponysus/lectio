@@ -3,6 +3,7 @@ import { type ReactNode, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { INQUIRY_STATUSES, type Inquiry, type InquiryInput, type InquiryStatus } from '../../api/client'
+import { formFieldClassName } from '../shared/formStyles'
 
 const inquiryFormSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(240, 'Title must be 240 characters or fewer'),
@@ -51,20 +52,24 @@ export function InquiryForm({ inquiry, submitLabel, submitting, apiError, onSubm
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit(submit)}>
-      <section className="rounded-[2rem] border border-black/5 bg-white/75 p-6 shadow-card backdrop-blur">
+      <section className="rounded-[1.5rem] border border-black/5 bg-white/75 p-5 shadow-card backdrop-blur">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs uppercase tracking-[0.24em] text-accent/80">Question frame</p>
+            <h3 className="mt-2 font-display text-[1.7rem] leading-tight text-ink">Name the question clearly enough to keep returning to it</h3>
+            <p className="mt-3 text-sm leading-6 text-ink/74">
+              The inquiry should be specific enough to guide future engagements, but open enough to remain live.
+            </p>
+          </div>
+        </div>
+
         <div className="grid gap-5 md:grid-cols-2">
           <Field label="Title" error={errors.title?.message}>
-            <input
-              {...register('title')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            />
+            <input {...register('title')} className={formFieldClassName} />
           </Field>
 
           <Field label="Status" error={errors.status?.message}>
-            <select
-              {...register('status')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            >
+            <select {...register('status')} className={formFieldClassName}>
               {INQUIRY_STATUSES.map((status) => (
                 <option key={status} value={status}>
                   {status.toLowerCase().replace(/_/g, ' ')}
@@ -75,39 +80,23 @@ export function InquiryForm({ inquiry, submitLabel, submitting, apiError, onSubm
         </div>
 
         <Field className="mt-5" label="Question" error={errors.question?.message}>
-          <textarea
-            {...register('question')}
-            rows={5}
-            className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-          />
+          <textarea {...register('question')} rows={5} className={formFieldClassName} />
         </Field>
       </section>
 
-      <section className="rounded-[2rem] border border-black/5 bg-white/75 p-6 shadow-card backdrop-blur">
+      <section className="rounded-[1.5rem] border border-black/5 bg-white/75 p-5 shadow-card backdrop-blur">
         <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Workspace context</p>
 
         <Field className="mt-5" label="Why it matters" error={errors.why_it_matters?.message}>
-          <textarea
-            {...register('why_it_matters')}
-            rows={4}
-            className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-          />
+          <textarea {...register('why_it_matters')} rows={4} className={formFieldClassName} />
         </Field>
 
         <Field className="mt-5" label="Current view" error={errors.current_view?.message}>
-          <textarea
-            {...register('current_view')}
-            rows={4}
-            className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-          />
+          <textarea {...register('current_view')} rows={4} className={formFieldClassName} />
         </Field>
 
         <Field className="mt-5" label="Open tensions" error={errors.open_tensions?.message}>
-          <textarea
-            {...register('open_tensions')}
-            rows={4}
-            className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-          />
+          <textarea {...register('open_tensions')} rows={4} className={formFieldClassName} />
         </Field>
       </section>
 

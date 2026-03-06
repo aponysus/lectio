@@ -13,6 +13,7 @@ import (
 
 	"github.com/aponysus/lectio/internal/auth"
 	"github.com/aponysus/lectio/internal/config"
+	"github.com/aponysus/lectio/internal/importer"
 	"github.com/aponysus/lectio/internal/server/routes"
 	"github.com/aponysus/lectio/internal/store"
 )
@@ -46,6 +47,15 @@ func main() {
 		}
 		if err := runMigrations(cfg, logger, args[1]); err != nil {
 			logger.Error("migration command failed", "error", err)
+			os.Exit(1)
+		}
+	case "import-v2":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: lectio import-v2 <path-to-legacy-json>")
+			os.Exit(1)
+		}
+		if err := runImportV2(cfg, logger, args[1]); err != nil {
+			logger.Error("v2 import failed", "error", err)
 			os.Exit(1)
 		}
 	default:
@@ -137,4 +147,29 @@ func runMigrations(cfg config.Config, logger *slog.Logger, mode string) error {
 	default:
 		return fmt.Errorf("unknown migration mode %q", mode)
 	}
+}
+
+func runImportV2(cfg config.Config, logger *slog.Logger, path string) error {
+	db, err := store.Open(cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	if err := store.ApplyMigrations(ctx, db); err != nil {
+		return err
+	}
+
+	result, err := importer.ImportV2File(ctx, store.New(db), path)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("v2 import complete",
+		"path", path,
+		"sources_created", result.SourcesCreated,
+		"engagements_created", result.EngagementsCreated,
+	)
+	return nil
 }

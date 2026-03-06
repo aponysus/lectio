@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { archiveSource, getSource, listEngagements, type Engagement, type Source } from '../../api/client'
 import { EngagementCard } from '../../components/engagements/EngagementCard'
+import { useConfirm } from '../../components/feedback/ConfirmProvider'
+import { useToast } from '../../components/feedback/ToastProvider'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 export function SourceDetailPage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
+  const { showToast } = useToast()
   const { sourceId } = useParams()
   const [source, setSource] = useState<Source | null>(null)
   const [engagements, setEngagements] = useState<Engagement[]>([])
@@ -56,7 +61,11 @@ export function SourceDetailPage() {
       return
     }
 
-    const confirmed = window.confirm(`Archive "${source.title}"?`)
+    const confirmed = await confirm({
+      title: 'Archive source?',
+      body: `Archive "${source.title}"? Its engagements will remain, but this source will disappear from active lists.`,
+      confirmLabel: 'Archive source',
+    })
     if (!confirmed) {
       return
     }
@@ -65,6 +74,7 @@ export function SourceDetailPage() {
     setError(null)
     try {
       await archiveSource(source.id)
+      showToast({ message: 'Source archived.', tone: 'info' })
       navigate('/sources')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to archive source')
@@ -73,11 +83,7 @@ export function SourceDetailPage() {
   }
 
   if (loading) {
-    return (
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-        Loading source...
-      </section>
-    )
+    return <LoadingPanel label="Loading source" />
   }
 
   if (!source) {

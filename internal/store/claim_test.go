@@ -124,3 +124,72 @@ func TestClaimLifecycleAndLinking(t *testing.T) {
 		t.Fatalf("expected ErrNotFound after archive, got %v", err)
 	}
 }
+
+func TestListClaimsFiltersByQuery(t *testing.T) {
+	t.Parallel()
+
+	db, err := Open(filepath.Join(t.TempDir(), "lectio.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("ApplyMigrations() error = %v", err)
+	}
+
+	store := New(db)
+
+	source, err := store.CreateSource(ctx, model.SourceInput{
+		Title:  "Claim Search Source",
+		Medium: string(model.SourceMediumBook),
+	})
+	if err != nil {
+		t.Fatalf("CreateSource() error = %v", err)
+	}
+
+	engagement, err := store.CreateEngagement(ctx, model.EngagementInput{
+		SourceID:   source.ID,
+		EngagedAt:  "2026-03-06T12:00:00Z",
+		Reflection: "A reflection that will produce searchable claims.",
+	})
+	if err != nil {
+		t.Fatalf("CreateEngagement() error = %v", err)
+	}
+
+	_, err = store.CreateClaim(ctx, model.ClaimInput{
+		Text:               "The speaker treats ritual as an instrument of memory.",
+		ClaimType:          string(model.ClaimTypeInterpretation),
+		Status:             string(model.ClaimStatusActive),
+		OriginEngagementID: engagement.ID,
+	}, nil)
+	if err != nil {
+		t.Fatalf("CreateClaim() error = %v", err)
+	}
+
+	_, err = store.CreateClaim(ctx, model.ClaimInput{
+		Text:               "The argument depends on social performance.",
+		ClaimType:          string(model.ClaimTypeObservation),
+		Status:             string(model.ClaimStatusTentative),
+		OriginEngagementID: engagement.ID,
+	}, nil)
+	if err != nil {
+		t.Fatalf("CreateClaim() error = %v", err)
+	}
+
+	results, err := store.ListClaims(ctx, model.ClaimFilters{
+		Query: "memory",
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListClaims() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 claim, got %d", len(results))
+	}
+	if results[0].Text != "The speaker treats ritual as an instrument of memory." {
+		t.Fatalf("unexpected claim returned: %q", results[0].Text)
+	}
+}

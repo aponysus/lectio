@@ -1,20 +1,30 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  dismissRediscoveryItem,
   type Engagement,
-  getSystemStatus,
   type Inquiry,
+  listInquiries,
+  listRediscoveryItems,
   listEngagements,
+  listSources,
   listSynthesisEligibleInquiries,
-  type SystemStatus,
+  markRediscoveryItemActedOn,
+  type RediscoveryItem,
 } from '../api/client'
-import { EngagementCard } from '../components/engagements/EngagementCard'
+import { useToast } from '../components/feedback/ToastProvider'
+import { RediscoveryCard } from '../components/rediscovery/RediscoveryCard'
 import { EmptyState } from '../components/shared/EmptyState'
 
 export function DashboardPage() {
-  const [status, setStatus] = useState<SystemStatus | null>(null)
+  const { showToast } = useToast()
   const [recentEngagements, setRecentEngagements] = useState<Engagement[]>([])
+  const [activeInquiries, setActiveInquiries] = useState<Inquiry[]>([])
   const [eligibleInquiries, setEligibleInquiries] = useState<Inquiry[]>([])
+  const [rediscoveryItems, setRediscoveryItems] = useState<RediscoveryItem[]>([])
+  const [sourceCount, setSourceCount] = useState(0)
+  const [pendingRediscoveryID, setPendingRediscoveryID] = useState<string | null>(null)
+  const [pendingRediscoveryAction, setPendingRediscoveryAction] = useState<'dismiss' | 'act' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -22,19 +32,23 @@ export function DashboardPage() {
 
     ;(async () => {
       try {
-        const [nextStatus, nextRecentEngagements, nextEligibleInquiries] = await Promise.all([
-          getSystemStatus(),
+        const [nextSources, nextActiveInquiries, nextRecentEngagements, nextEligibleInquiries, nextRediscoveryItems] = await Promise.all([
+          listSources({ limit: 100, sort: 'recent' }),
+          listInquiries({ status: 'ACTIVE', limit: 6 }),
           listEngagements({ limit: 4 }),
           listSynthesisEligibleInquiries(4),
+          listRediscoveryItems(6),
         ])
         if (!cancelled) {
-          setStatus(nextStatus)
+          setSourceCount(nextSources.length)
+          setActiveInquiries(nextActiveInquiries)
           setRecentEngagements(nextRecentEngagements)
           setEligibleInquiries(nextEligibleInquiries)
+          setRediscoveryItems(nextRediscoveryItems)
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load system status')
+          setError(err instanceof Error ? err.message : 'Failed to load dashboard')
         }
       }
     })()
@@ -44,33 +58,133 @@ export function DashboardPage() {
     }
   }, [])
 
+  const handleDismissRediscoveryItem = async (item: RediscoveryItem) => {
+    setPendingRediscoveryID(item.id)
+    setPendingRediscoveryAction('dismiss')
+    setError(null)
+
+    try {
+      await dismissRediscoveryItem(item.id)
+      setRediscoveryItems((current) => current.filter((entry) => entry.id !== item.id))
+      showToast({ message: 'Rediscovery item dismissed.', tone: 'info' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to dismiss rediscovery item')
+    } finally {
+      setPendingRediscoveryID(null)
+      setPendingRediscoveryAction(null)
+    }
+  }
+
+  const handleActOnRediscoveryItem = async (item: RediscoveryItem) => {
+    setPendingRediscoveryID(item.id)
+    setPendingRediscoveryAction('act')
+    setError(null)
+
+    try {
+      await markRediscoveryItemActedOn(item.id)
+      setRediscoveryItems((current) => current.filter((entry) => entry.id !== item.id))
+      showToast({ message: 'Rediscovery item marked acted on.' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update rediscovery item')
+    } finally {
+      setPendingRediscoveryID(null)
+      setPendingRediscoveryAction(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur lg:px-8">
-        <p className="text-xs uppercase tracking-[0.3em] text-accent/80">Sharpening loop</p>
-        <h2 className="mt-3 font-display text-4xl text-ink">M6 synthesis is live</h2>
-        <p className="mt-4 max-w-3xl text-base leading-7 text-ink/72">
-          The core MVP path now moves past collection into sharper thinking: protected sessions, source records,
-          engagement capture, inquiry workspaces, explicit claims extracted from reflection, and inquiry-linked
-          syntheses that compress what the work now seems to say.
-        </p>
+      <section className="rounded-[1.5rem] border border-black/5 bg-white/70 px-5 py-6 shadow-card backdrop-blur lg:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[0.7rem] uppercase tracking-[0.24em] text-accent/80">Today&apos;s desk</p>
+            <h2 className="mt-2 font-display text-[2.25rem] leading-tight text-ink">Resume the work that still matters</h2>
+            <p className="mt-3 text-sm leading-6 text-ink/72">
+              Pick up an active inquiry, log the next engagement, and surface what is ready for synthesis or another pass.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to="/engagements/new"
+              className="rounded-2xl bg-pine px-4 py-3 text-sm font-medium text-white transition hover:bg-pine/90"
+            >
+              Log engagement
+            </Link>
+            <Link
+              to="/inquiries/new"
+              className="rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-ink transition hover:bg-white"
+            >
+              New inquiry
+            </Link>
+            <Link
+              to="/sources/new"
+              className="rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-ink transition hover:bg-white"
+            >
+              New source
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatusCard title="App" value={status?.app_name ?? 'Loading...'} tone="pine" />
-        <StatusCard title="Environment" value={status?.environment ?? 'Loading...'} tone="accent" />
-        <StatusCard title="Migrations" value={status ? String(status.applied_migrations) : 'Loading...'} tone="ink" />
-        <StatusCard title="Database Time" value={status?.database_time ?? 'Loading...'} tone="neutral" />
+        <StatusCard title="Active inquiries" value={String(activeInquiries.length)} tone="pine" />
+        <StatusCard title="Sources" value={String(sourceCount)} tone="accent" />
+        <StatusCard title="Ready for synthesis" value={String(eligibleInquiries.length)} tone="ink" />
+        <StatusCard title="Resurfacing now" value={String(rediscoveryItems.length)} tone="neutral" />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <article className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-7 shadow-card backdrop-blur">
+          <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Continue where you left off</p>
+          <h3 className="mt-3 font-display text-3xl text-ink">Recent work and live questions</h3>
+
+          <div className="mt-5 grid gap-6 lg:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-ink/60">Recent engagements</p>
+              {recentEngagements.length === 0 ? (
+                <p className="mt-3 text-sm leading-6 text-ink/72">No engagements yet. Start by logging the next serious encounter.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {recentEngagements.slice(0, 3).map((engagement) => (
+                    <WorkspaceLinkCard
+                      key={engagement.id}
+                      to={`/engagements/${engagement.id}`}
+                      label={engagement.source.title}
+                      title={engagement.portion_label ?? 'Untitled engagement'}
+                      meta={formatTimestamp(engagement.engaged_at)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-ink/60">Active inquiries</p>
+              {activeInquiries.length === 0 ? (
+                <p className="mt-3 text-sm leading-6 text-ink/72">No active inquiries yet. Open one before the archive starts drifting.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {activeInquiries.slice(0, 3).map((inquiry) => (
+                    <WorkspaceLinkCard
+                      key={inquiry.id}
+                      to={`/inquiries/${inquiry.id}`}
+                      label={`${inquiry.engagement_count} engagements • ${inquiry.claim_count} claims`}
+                      title={inquiry.title}
+                      meta={inquiry.latest_activity ? `Latest activity ${formatTimestamp(inquiry.latest_activity)}` : 'No recent activity'}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </article>
+
         <article className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-7 shadow-card backdrop-blur">
           <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Synthesis prompts</p>
           <h3 className="mt-3 font-display text-3xl text-ink">Inquiries ready for compression</h3>
           {eligibleInquiries.length === 0 ? (
             <p className="mt-5 text-sm leading-7 text-ink/74">
-              Nothing is over the synthesis threshold right now. Once an inquiry reaches three linked engagements or
-              two linked claims without a synthesis, it will surface here.
+              Nothing is at the synthesis threshold right now. Once an inquiry reaches enough density, it will surface here.
             </p>
           ) : (
             <div className="mt-5 space-y-4">
@@ -80,34 +194,49 @@ export function DashboardPage() {
             </div>
           )}
         </article>
+      </section>
 
-        <article className="rounded-[2rem] border border-black/5 bg-stone-950 px-6 py-7 text-stone-100 shadow-card">
-          <p className="text-xs uppercase tracking-[0.25em] text-stone-400">System status</p>
-          {error ? (
-            <p className="mt-4 text-sm leading-6 text-amber-300">{error}</p>
-          ) : (
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="text-stone-400">Bootstrapped At</dt>
-                <dd className="mt-1 text-stone-100">{status?.bootstrapped_at ?? 'Loading...'}</dd>
-              </div>
-              <div>
-                <dt className="text-stone-400">Database Clock</dt>
-                <dd className="mt-1 text-stone-100">{status?.database_time ?? 'Loading...'}</dd>
-              </div>
-              <div>
-                <dt className="text-stone-400">Authenticated Surface</dt>
-                <dd className="mt-1 text-stone-100">Dashboard shell, protected API route, and session-aware nav</dd>
-              </div>
-            </dl>
-          )}
-        </article>
+      {error ? (
+        <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-700 shadow-card">
+          {error}
+        </section>
+      ) : null}
+
+      <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-7 shadow-card backdrop-blur">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Bring back into view</p>
+            <h3 className="mt-3 font-display text-3xl text-ink">Sparse prompts for work worth resurfacing</h3>
+          </div>
+          <p className="max-w-sm text-sm leading-6 text-ink/70">
+            The feed stays intentionally small: stale tentative claims, older inquiry-linked engagements, unsynthesized
+            inquiry clusters, and recent reactivations.
+          </p>
+        </div>
+
+        {rediscoveryItems.length === 0 ? (
+          <p className="mt-5 text-sm leading-7 text-ink/74">
+            Nothing currently needs resurfacing. Once material crosses the v1 thresholds, it will appear here.
+          </p>
+        ) : (
+          <div className="mt-5 space-y-4">
+            {rediscoveryItems.map((item) => (
+              <RediscoveryCard
+                key={item.id}
+                item={item}
+                pendingAction={pendingRediscoveryID === item.id ? pendingRediscoveryAction : null}
+                onDismiss={handleDismissRediscoveryItem}
+                onAct={handleActOnRediscoveryItem}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {recentEngagements.length === 0 ? (
         <EmptyState
           title="No engagements yet"
-          body="The source slice is stable and the engagement flow is now live. Log the first meaningful encounter with a source from here or from any source detail page."
+          body="Start with one deliberate encounter. Source records are ready; the next useful move is to log what you actually engaged."
           action={
             <Link
               to="/engagements/new"
@@ -117,27 +246,7 @@ export function DashboardPage() {
             </Link>
           }
         />
-      ) : (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Recent engagements</p>
-              <h3 className="mt-2 font-display text-3xl text-ink">The latest captured work</h3>
-            </div>
-            <Link
-              to="/engagements/new"
-              className="rounded-2xl bg-pine px-4 py-3 text-sm font-medium text-white transition hover:bg-pine/90"
-            >
-              New engagement
-            </Link>
-          </div>
-          <div className="grid gap-5 xl:grid-cols-2">
-            {recentEngagements.map((engagement) => (
-              <EngagementCard key={engagement.id} engagement={engagement} />
-            ))}
-          </div>
-        </section>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -195,4 +304,32 @@ function StatusCard({
       <p className="mt-3 text-lg font-medium">{value}</p>
     </article>
   )
+}
+
+function WorkspaceLinkCard({
+  to,
+  label,
+  title,
+  meta,
+}: {
+  to: string
+  label: string
+  title: string
+  meta: string
+}) {
+  return (
+    <Link
+      to={to}
+      className="block rounded-[1.25rem] border border-black/5 bg-black/[0.03] px-4 py-4 transition hover:border-black/10 hover:bg-black/[0.045]"
+    >
+      <p className="text-xs uppercase tracking-[0.18em] text-accent/75">{label}</p>
+      <h4 className="mt-2 text-base font-medium text-ink">{title}</h4>
+      <p className="mt-2 text-sm leading-6 text-ink/72">{meta}</p>
+    </Link>
+  )
+}
+
+function formatTimestamp(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }

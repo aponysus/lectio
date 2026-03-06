@@ -5,20 +5,29 @@ import {
   getEngagement,
   listEngagementClaims,
   listEngagementInquiries,
+  listEngagementLanguageNotes,
   type Claim,
   type Engagement,
   type InquirySummary,
+  type LanguageNote,
 } from '../../api/client'
 import { ClaimCard } from '../../components/claims/ClaimCard'
+import { useConfirm } from '../../components/feedback/ConfirmProvider'
+import { useToast } from '../../components/feedback/ToastProvider'
+import { LanguageNoteCard } from '../../components/language-notes/LanguageNoteCard'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 export function EngagementDetailPage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
+  const { showToast } = useToast()
   const { engagementId } = useParams()
   const [engagement, setEngagement] = useState<Engagement | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
   const [inquiries, setInquiries] = useState<InquirySummary[]>([])
+  const [languageNotes, setLanguageNotes] = useState<LanguageNote[]>([])
   const [loading, setLoading] = useState(true)
   const [archivePending, setArchivePending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,15 +45,17 @@ export function EngagementDetailPage() {
 
     ;(async () => {
       try {
-        const [nextEngagement, nextInquiries, nextClaims] = await Promise.all([
+        const [nextEngagement, nextInquiries, nextClaims, nextLanguageNotes] = await Promise.all([
           getEngagement(engagementId),
           listEngagementInquiries(engagementId),
           listEngagementClaims(engagementId),
+          listEngagementLanguageNotes(engagementId),
         ])
         if (!cancelled) {
           setEngagement(nextEngagement)
           setInquiries(nextInquiries)
           setClaims(nextClaims)
+          setLanguageNotes(nextLanguageNotes)
         }
       } catch (err) {
         if (!cancelled) {
@@ -67,7 +78,11 @@ export function EngagementDetailPage() {
       return
     }
 
-    const confirmed = window.confirm('Archive this engagement?')
+    const confirmed = await confirm({
+      title: 'Archive engagement?',
+      body: `Archive the engagement "${engagement.portion_label ?? 'Untitled engagement'}" from ${engagement.source.title}?`,
+      confirmLabel: 'Archive engagement',
+    })
     if (!confirmed) {
       return
     }
@@ -77,6 +92,7 @@ export function EngagementDetailPage() {
 
     try {
       await archiveEngagement(engagement.id)
+      showToast({ message: 'Engagement archived.', tone: 'info' })
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to archive engagement')
@@ -85,11 +101,7 @@ export function EngagementDetailPage() {
   }
 
   if (loading) {
-    return (
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-        Loading engagement...
-      </section>
-    )
+    return <LoadingPanel label="Loading engagement" />
   }
 
   if (!engagement) {
@@ -175,6 +187,7 @@ export function EngagementDetailPage() {
               label="Reread / rewatch"
               value={engagement.is_reread_or_rewatch ? 'Yes' : 'No'}
             />
+            <MetaItem label="Language notes" value={String(languageNotes.length)} />
             <MetaItem label="Updated" value={formatDateTime(engagement.updated_at)} />
           </dl>
 
@@ -198,6 +211,42 @@ export function EngagementDetailPage() {
           </div>
         </article>
       </section>
+
+      {languageNotes.length === 0 ? (
+        <section className="rounded-[2rem] border border-dashed border-black/10 bg-white/55 px-6 py-8 text-center shadow-card backdrop-blur">
+          <h3 className="font-display text-3xl text-ink">No language notes yet</h3>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-ink/70">
+            If wording, translation, register, or cultural nuance shaped this engagement, add a language note from the
+            edit flow.
+          </p>
+          <Link
+            to={`/engagements/${engagement.id}/edit`}
+            className="mt-6 inline-flex rounded-2xl bg-pine px-4 py-3 text-sm font-medium text-white transition hover:bg-pine/90"
+          >
+            Add language note
+          </Link>
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Language notes</p>
+              <h3 className="mt-2 font-display text-3xl text-ink">Wording and translation observations</h3>
+            </div>
+            <Link
+              to={`/engagements/${engagement.id}/edit`}
+              className="rounded-2xl border border-black/10 bg-white/80 px-4 py-3 text-sm text-ink transition hover:bg-white"
+            >
+              Edit notes
+            </Link>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-2">
+            {languageNotes.map((note) => (
+              <LanguageNoteCard key={note.id} note={note} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {claims.length === 0 ? (
         <section className="rounded-[2rem] border border-dashed border-black/10 bg-white/55 px-6 py-8 text-center shadow-card backdrop-blur">

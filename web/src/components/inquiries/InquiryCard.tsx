@@ -3,11 +3,11 @@ import type { Inquiry } from '../../api/client'
 
 export function InquiryCard({ inquiry }: { inquiry: Inquiry }) {
   return (
-    <article className="rounded-[1.75rem] border border-black/5 bg-white/75 p-5 shadow-card backdrop-blur">
+    <article className="rounded-[1.5rem] border border-black/5 bg-white/75 p-4 shadow-card backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-accent/80">{formatStatus(inquiry.status)}</p>
-          <h3 className="mt-2 font-display text-2xl text-ink">{inquiry.title}</h3>
+          <h3 className="mt-2 font-display text-[1.65rem] leading-tight text-ink">{inquiry.title}</h3>
           <p className="mt-3 line-clamp-3 text-sm leading-6 text-ink/78">{inquiry.question}</p>
         </div>
         <Link

@@ -151,6 +151,70 @@ export type ClaimUpdateInput = {
   notes: string
 }
 
+export const LANGUAGE_NOTE_TYPES = [
+  'TRANSLATION',
+  'REGISTER',
+  'IDIOM',
+  'COLLOCATION',
+  'CULTURAL_NUANCE',
+  'OTHER',
+] as const
+
+export type LanguageNoteType = (typeof LANGUAGE_NOTE_TYPES)[number]
+
+export type LanguageNote = {
+  id: string
+  engagement_id: string
+  term?: string
+  language?: string
+  note_type?: LanguageNoteType
+  content: string
+  created_at: string
+  updated_at: string
+  archived_at?: string
+}
+
+export type LanguageNoteCreateInput = {
+  engagement_id: string
+  term: string
+  language: string
+  note_type: LanguageNoteType
+  content: string
+}
+
+export type LanguageNoteUpdateInput = {
+  term: string
+  language: string
+  note_type: LanguageNoteType
+  content: string
+}
+
+export const REDISCOVERY_KINDS = [
+  'stale_tentative_claim',
+  'active_inquiry_old_engagement',
+  'unsynthesized_inquiry',
+  'recent_reactivation',
+] as const
+
+export type RediscoveryKind = (typeof REDISCOVERY_KINDS)[number]
+
+export type RediscoveryStatus = 'NEW' | 'SEEN' | 'DISMISSED' | 'ACTED_ON'
+
+export type RediscoveryItem = {
+  id: string
+  kind: RediscoveryKind
+  target_type: 'CLAIM' | 'ENGAGEMENT' | 'INQUIRY'
+  target_id: string
+  reason: string
+  status: RediscoveryStatus
+  created_at: string
+  updated_at: string
+  claim?: Claim
+  engagement?: Engagement
+  inquiry?: Inquiry
+  linked_inquiry?: InquirySummary
+}
+
 export const SYNTHESIS_TYPES = ['CHECKPOINT', 'COMPARISON', 'POSITION'] as const
 
 export type SynthesisType = (typeof SYNTHESIS_TYPES)[number]
@@ -202,6 +266,7 @@ export type Engagement = {
   created_at: string
   updated_at: string
   archived_at?: string
+  language_note_count: number
   source: {
     id: string
     title: string
@@ -223,9 +288,34 @@ export type EngagementInput = {
   is_reread_or_rewatch: boolean
 }
 
+export type EngagementCreateInput = EngagementInput & {
+  inquiry_ids?: string[]
+  inline_inquiries?: InquiryInput[]
+  claims?: Array<{
+    text: string
+    claim_type: ClaimType
+    confidence: number | null
+    status: ClaimStatus
+    notes: string
+  }>
+  language_notes?: Array<{
+    term: string
+    language: string
+    note_type: LanguageNoteType
+    content: string
+  }>
+}
+
 export type ListEngagementsFilters = {
+  q?: string
   source_id?: string
   access_mode?: string
+  has_language_notes?: boolean
+  limit?: number
+}
+
+export type ListClaimsFilters = {
+  q?: string
   limit?: number
 }
 
@@ -442,11 +532,17 @@ export async function archiveClaim(id: string): Promise<void> {
 export async function listEngagements(filters: ListEngagementsFilters = {}): Promise<Engagement[]> {
   const query = new URLSearchParams()
 
+  if (filters.q) {
+    query.set('q', filters.q)
+  }
   if (filters.source_id) {
     query.set('source_id', filters.source_id)
   }
   if (filters.access_mode) {
     query.set('access_mode', filters.access_mode)
+  }
+  if (filters.has_language_notes) {
+    query.set('has_language_notes', 'true')
   }
   if (filters.limit) {
     query.set('limit', String(filters.limit))
@@ -457,12 +553,27 @@ export async function listEngagements(filters: ListEngagementsFilters = {}): Pro
   return response.data
 }
 
+export async function listClaims(filters: ListClaimsFilters = {}): Promise<Claim[]> {
+  const query = new URLSearchParams()
+
+  if (filters.q) {
+    query.set('q', filters.q)
+  }
+  if (filters.limit) {
+    query.set('limit', String(filters.limit))
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  const response = await request<Envelope<Claim[]>>(`/api/claims${suffix}`)
+  return response.data
+}
+
 export async function getEngagement(id: string): Promise<Engagement> {
   const response = await request<Envelope<Engagement>>(`/api/engagements/${id}`)
   return response.data
 }
 
-export async function createEngagement(input: EngagementInput): Promise<Engagement> {
+export async function createEngagement(input: EngagementCreateInput): Promise<Engagement> {
   const response = await request<Envelope<Engagement>>('/api/engagements', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -502,6 +613,33 @@ export async function listEngagementClaims(engagementId: string): Promise<Claim[
   return response.data
 }
 
+export async function listEngagementLanguageNotes(engagementId: string): Promise<LanguageNote[]> {
+  const response = await request<Envelope<LanguageNote[]>>(`/api/engagements/${engagementId}/language-notes`)
+  return response.data
+}
+
+export async function createLanguageNote(input: LanguageNoteCreateInput): Promise<LanguageNote> {
+  const response = await request<Envelope<LanguageNote>>('/api/language-notes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return response.data
+}
+
+export async function updateLanguageNote(id: string, input: LanguageNoteUpdateInput): Promise<LanguageNote> {
+  const response = await request<Envelope<LanguageNote>>(`/api/language-notes/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+  return response.data
+}
+
+export async function archiveLanguageNote(id: string): Promise<void> {
+  await request(`/api/language-notes/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function replaceEngagementInquiries(engagementId: string, inquiryIDs: string[]): Promise<void> {
   await request(`/api/engagements/${engagementId}/inquiries`, {
     method: 'PUT',
@@ -520,6 +658,26 @@ export async function listSynthesisEligibleInquiries(limit = 6): Promise<Inquiry
 
   const response = await request<Envelope<Inquiry[]>>(`/api/inquiries/eligible-for-synthesis?${query.toString()}`)
   return response.data
+}
+
+export async function listRediscoveryItems(limit = 6): Promise<RediscoveryItem[]> {
+  const query = new URLSearchParams()
+  query.set('limit', String(limit))
+
+  const response = await request<Envelope<RediscoveryItem[]>>(`/api/rediscovery/items?${query.toString()}`)
+  return response.data
+}
+
+export async function dismissRediscoveryItem(id: string): Promise<void> {
+  await request(`/api/rediscovery/items/${id}/dismiss`, {
+    method: 'POST',
+  })
+}
+
+export async function markRediscoveryItemActedOn(id: string): Promise<void> {
+  await request(`/api/rediscovery/items/${id}/act`, {
+    method: 'POST',
+  })
 }
 
 export async function listSyntheses(limit = 50): Promise<Synthesis[]> {

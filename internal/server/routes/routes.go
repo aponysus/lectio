@@ -42,6 +42,9 @@ func New(deps Dependencies) http.Handler {
 		Config: deps.Config,
 		Store:  deps.Store,
 	}
+	exportHandler := handlers.ExportHandler{
+		Store: deps.Store,
+	}
 	sourceHandler := handlers.SourceHandler{
 		Store: deps.Store,
 	}
@@ -57,7 +60,13 @@ func New(deps Dependencies) http.Handler {
 	claimHandler := handlers.ClaimHandler{
 		Store: deps.Store,
 	}
+	languageNoteHandler := handlers.LanguageNoteHandler{
+		Store: deps.Store,
+	}
 	synthesisHandler := handlers.SynthesisHandler{
+		Store: deps.Store,
+	}
+	rediscoveryHandler := handlers.RediscoveryHandler{
 		Store: deps.Store,
 	}
 
@@ -73,19 +82,23 @@ func New(deps Dependencies) http.Handler {
 		r.Group(func(protected chi.Router) {
 			protected.Use(appmiddleware.RequireAuth())
 			protected.Get("/system/status", systemHandler.Status)
+			protected.Get("/export", exportHandler.Download)
 			protected.Get("/sources", sourceHandler.List)
 			protected.Get("/sources/{sourceID}", sourceHandler.Get)
 			protected.Get("/engagements", engagementHandler.List)
 			protected.Get("/engagements/{engagementID}", engagementHandler.Get)
 			protected.Get("/engagements/{engagementID}/inquiries", engagementInquiryHandler.List)
 			protected.Get("/engagements/{engagementID}/claims", claimHandler.ListEngagementClaims)
+			protected.Get("/engagements/{engagementID}/language-notes", languageNoteHandler.ListEngagementLanguageNotes)
 			protected.Get("/inquiries", inquiryHandler.List)
 			protected.Get("/inquiries/eligible-for-synthesis", inquiryHandler.ListEligibleForSynthesis)
 			protected.Get("/inquiries/{inquiryID}", inquiryHandler.Get)
 			protected.Get("/inquiries/{inquiryID}/engagements", inquiryHandler.ListEngagements)
 			protected.Get("/inquiries/{inquiryID}/claims", claimHandler.ListInquiryClaims)
 			protected.Get("/inquiries/{inquiryID}/syntheses", synthesisHandler.ListInquirySyntheses)
+			protected.Get("/claims", claimHandler.List)
 			protected.Get("/claims/{claimID}", claimHandler.Get)
+			protected.Get("/rediscovery/items", rediscoveryHandler.List)
 			protected.Get("/syntheses", synthesisHandler.List)
 			protected.Get("/syntheses/{synthesisID}", synthesisHandler.Get)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/sources", sourceHandler.Create)
@@ -102,6 +115,11 @@ func New(deps Dependencies) http.Handler {
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/claims/{claimID}", claimHandler.Update)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/claims/{claimID}/inquiries", claimHandler.ReplaceInquiries)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/claims/{claimID}", claimHandler.Archive)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/language-notes", languageNoteHandler.Create)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/language-notes/{languageNoteID}", languageNoteHandler.Update)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/language-notes/{languageNoteID}", languageNoteHandler.Archive)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/rediscovery/items/{itemID}/dismiss", rediscoveryHandler.Dismiss)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/rediscovery/items/{itemID}/act", rediscoveryHandler.MarkActedOn)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/syntheses", synthesisHandler.Create)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/syntheses/{synthesisID}", synthesisHandler.Update)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/syntheses/{synthesisID}", synthesisHandler.Archive)

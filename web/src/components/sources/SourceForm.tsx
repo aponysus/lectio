@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import type { Source, SourceInput, SourceMedium } from '../../api/client'
 import { SOURCE_MEDIA } from '../../api/client'
+import { formFieldClassName } from '../shared/formStyles'
 
 const sourceFormSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(240, 'Title must be 240 characters or fewer'),
@@ -60,20 +61,24 @@ export function SourceForm({ source, submitLabel, submitting, apiError, onSubmit
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit(submit)}>
-      <section className="rounded-[2rem] border border-black/5 bg-white/75 p-6 shadow-card backdrop-blur">
+      <section className="rounded-[1.5rem] border border-black/5 bg-white/75 p-5 shadow-card backdrop-blur">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs uppercase tracking-[0.24em] text-accent/80">Source record</p>
+            <h3 className="mt-2 font-display text-[1.7rem] leading-tight text-ink">Keep the record clean enough to reuse later</h3>
+            <p className="mt-3 text-sm leading-6 text-ink/74">
+              Capture only the metadata that will matter again when engagement work starts stacking up.
+            </p>
+          </div>
+        </div>
+
         <div className="grid gap-5 md:grid-cols-2">
           <Field label="Title" error={errors.title?.message}>
-            <input
-              {...register('title')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            />
+            <input {...register('title')} className={formFieldClassName} />
           </Field>
 
           <Field label="Medium" error={errors.medium?.message}>
-            <select
-              {...register('medium')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            >
+            <select {...register('medium')} className={formFieldClassName}>
               {SOURCE_MEDIA.map((medium) => (
                 <option key={medium} value={medium}>
                   {medium.toLowerCase().replace(/_/g, ' ')}
@@ -83,41 +88,24 @@ export function SourceForm({ source, submitLabel, submitting, apiError, onSubmit
           </Field>
 
           <Field label="Creator" error={errors.creator?.message}>
-            <input
-              {...register('creator')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            />
+            <input {...register('creator')} className={formFieldClassName} />
           </Field>
 
           <Field label="Year" error={errors.year?.message}>
-            <input
-              {...register('year')}
-              inputMode="numeric"
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            />
+            <input {...register('year')} inputMode="numeric" className={formFieldClassName} />
           </Field>
 
           <Field label="Original language" error={errors.original_language?.message}>
-            <input
-              {...register('original_language')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            />
+            <input {...register('original_language')} className={formFieldClassName} />
           </Field>
 
           <Field label="Culture / context" error={errors.culture_or_context?.message}>
-            <input
-              {...register('culture_or_context')}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-            />
+            <input {...register('culture_or_context')} className={formFieldClassName} />
           </Field>
         </div>
 
         <Field className="mt-5" label="Notes" error={errors.notes?.message}>
-          <textarea
-            {...register('notes')}
-            rows={6}
-            className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
-          />
+          <textarea {...register('notes')} rows={6} className={formFieldClassName} />
         </Field>
       </section>
 

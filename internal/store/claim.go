@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/aponysus/lectio/internal/model"
 )
@@ -162,6 +163,43 @@ func (s *Store) ReplaceClaimInquiries(ctx context.Context, claimID string, inqui
 	}
 
 	return tx.Commit()
+}
+
+func (s *Store) ListClaims(ctx context.Context, filters model.ClaimFilters) ([]model.Claim, error) {
+	args := []any{}
+	var where []string
+
+	if !filters.IncludeArchived {
+		where = append(where, "c.archived_at IS NULL")
+	}
+	if filters.Query != "" {
+		where = append(where, "LOWER(c.text) LIKE ?")
+		args = append(args, "%"+strings.ToLower(filters.Query)+"%")
+	}
+
+	query := claimSelectQuery
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY c.updated_at DESC, c.id DESC LIMIT ?"
+	args = append(args, filters.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	claims := []model.Claim{}
+	for rows.Next() {
+		claim, err := scanClaim(rows)
+		if err != nil {
+			return nil, err
+		}
+		claims = append(claims, claim)
+	}
+
+	return claims, rows.Err()
 }
 
 func (s *Store) ListInquiryClaims(ctx context.Context, inquiryID string) ([]model.Claim, error) {

@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { type ListSourcesFilters, listSources, SOURCE_MEDIA, type Source } from '../../api/client'
 import { SourceCard } from '../../components/sources/SourceCard'
+import { SourceListRow } from '../../components/sources/SourceListRow'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { formFieldClassName } from '../../components/shared/formStyles'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
+import { type BrowseViewMode, ViewModeToggle } from '../../components/shared/ViewModeToggle'
 
 export function SourcesPage() {
-  const [filters, setFilters] = useState<ListSourcesFilters>({
-    q: '',
+  const [searchParams] = useSearchParams()
+  const [viewMode, setViewMode] = useState<BrowseViewMode>('list')
+  const [filters, setFilters] = useState<ListSourcesFilters>(() => ({
+    q: searchParams.get('q') ?? '',
     medium: '',
     original_language: '',
     sort: 'recent',
-  })
+  }))
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -60,14 +66,24 @@ export function SourcesPage() {
         }
       />
 
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 p-6 shadow-card backdrop-blur">
+      <section className="rounded-[1.5rem] border border-black/5 bg-white/70 p-5 shadow-card backdrop-blur">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-xs uppercase tracking-[0.22em] text-accent/80">Filters</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-ink/68">
+              {sources.length} {sources.length === 1 ? 'source' : 'sources'}
+              {loading ? ' loading' : ' visible'}
+            </p>
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          </div>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="block">
             <span className="mb-2 block text-sm text-ink/75">Search title or creator</span>
             <input
               value={filters.q ?? ''}
               onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
+              className={formFieldClassName}
             />
           </label>
 
@@ -76,7 +92,7 @@ export function SourcesPage() {
             <select
               value={filters.medium ?? ''}
               onChange={(event) => setFilters((current) => ({ ...current, medium: event.target.value }))}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
+              className={formFieldClassName}
             >
               <option value="">All media</option>
               {SOURCE_MEDIA.map((medium) => (
@@ -92,7 +108,7 @@ export function SourcesPage() {
             <input
               value={filters.original_language ?? ''}
               onChange={(event) => setFilters((current) => ({ ...current, original_language: event.target.value }))}
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
+              className={formFieldClassName}
             />
           </label>
 
@@ -103,7 +119,7 @@ export function SourcesPage() {
               onChange={(event) =>
                 setFilters((current) => ({ ...current, sort: event.target.value as ListSourcesFilters['sort'] }))
               }
-              className="w-full rounded-2xl border border-black/10 bg-canvas/80 px-4 py-3 outline-none transition focus:border-accent"
+              className={formFieldClassName}
             >
               <option value="recent">Recently updated</option>
               <option value="title">Title</option>
@@ -119,9 +135,7 @@ export function SourcesPage() {
       ) : null}
 
       {loading ? (
-        <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-          Loading sources...
-        </section>
+        <LoadingPanel label="Loading sources" variant="list" />
       ) : sources.length === 0 ? (
         <EmptyState
           title="No sources yet"
@@ -135,6 +149,12 @@ export function SourcesPage() {
             </Link>
           }
         />
+      ) : viewMode === 'list' ? (
+        <section className="space-y-3">
+          {sources.map((source) => (
+            <SourceListRow key={source.id} source={source} />
+          ))}
+        </section>
       ) : (
         <section className="grid gap-5 xl:grid-cols-2">
           {sources.map((source) => (

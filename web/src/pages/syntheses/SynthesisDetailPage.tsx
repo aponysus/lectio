@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { archiveSynthesis, getSynthesis, type Synthesis } from '../../api/client'
+import { useConfirm } from '../../components/feedback/ConfirmProvider'
+import { useToast } from '../../components/feedback/ToastProvider'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 export function SynthesisDetailPage() {
   const navigate = useNavigate()
+  const { confirm } = useConfirm()
+  const { showToast } = useToast()
   const { synthesisId } = useParams()
   const [synthesis, setSynthesis] = useState<Synthesis | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,7 +55,11 @@ export function SynthesisDetailPage() {
       return
     }
 
-    const confirmed = window.confirm(`Archive "${synthesis.title}"?`)
+    const confirmed = await confirm({
+      title: 'Archive synthesis?',
+      body: `Archive "${synthesis.title}"? The linked inquiry will remain active, but this synthesis will disappear from active lists.`,
+      confirmLabel: 'Archive synthesis',
+    })
     if (!confirmed) {
       return
     }
@@ -60,6 +69,7 @@ export function SynthesisDetailPage() {
 
     try {
       await archiveSynthesis(synthesis.id)
+      showToast({ message: 'Synthesis archived.', tone: 'info' })
       navigate('/syntheses')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to archive synthesis')
@@ -68,11 +78,7 @@ export function SynthesisDetailPage() {
   }
 
   if (loading) {
-    return (
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-        Loading synthesis...
-      </section>
-    )
+    return <LoadingPanel label="Loading synthesis" />
   }
 
   if (!synthesis) {

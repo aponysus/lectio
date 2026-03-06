@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/aponysus/lectio/internal/model"
 	"github.com/aponysus/lectio/internal/server/httpx"
@@ -23,6 +24,35 @@ type claimRequest struct {
 	OriginEngagementID string   `json:"origin_engagement_id"`
 	Notes              string   `json:"notes"`
 	InquiryIDs         []string `json:"inquiry_ids"`
+}
+
+func (h ClaimHandler) List(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "validation_error", "limit must be an integer")
+			return
+		}
+		limit = parsed
+	}
+
+	filters, err := validation.NormalizeClaimFilters(model.ClaimFilters{
+		Query: r.URL.Query().Get("q"),
+		Limit: limit,
+	})
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "validation_error", err.Error())
+		return
+	}
+
+	claims, err := h.Store.ListClaims(r.Context(), filters)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list claims")
+		return
+	}
+
+	httpx.WriteData(w, http.StatusOK, claims)
 }
 
 func (h ClaimHandler) ListInquiryClaims(w http.ResponseWriter, r *http.Request) {

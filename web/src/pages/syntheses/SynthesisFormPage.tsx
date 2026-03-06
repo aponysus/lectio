@@ -13,8 +13,10 @@ import {
   type SynthesisInput,
   updateSynthesis,
 } from '../../api/client'
+import { useToast } from '../../components/feedback/ToastProvider'
 import { SynthesisForm } from '../../components/syntheses/SynthesisForm'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { LoadingPanel } from '../../components/shared/LoadingPanel'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 type SynthesisFormPageProps = {
@@ -23,6 +25,7 @@ type SynthesisFormPageProps = {
 
 export function SynthesisFormPage({ mode }: SynthesisFormPageProps) {
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const { synthesisId } = useParams()
   const [searchParams] = useSearchParams()
   const queryInquiryID = searchParams.get('inquiryId') ?? undefined
@@ -104,6 +107,7 @@ export function SynthesisFormPage({ mode }: SynthesisFormPageProps) {
           ? await createSynthesis(input)
           : await updateSynthesis(synthesisId ?? '', input)
 
+      showToast({ message: mode === 'create' ? 'Synthesis created.' : 'Synthesis updated.' })
       navigate(`/syntheses/${saved.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save synthesis')
@@ -113,11 +117,7 @@ export function SynthesisFormPage({ mode }: SynthesisFormPageProps) {
   }
 
   if (loading) {
-    return (
-      <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur">
-        Loading synthesis form...
-      </section>
-    )
+    return <LoadingPanel label="Loading synthesis form" />
   }
 
   if (!inquiry) {
