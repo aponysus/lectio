@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-canvas font-body text-ink antialiased;
+  }
+
+  code {
+    @apply rounded bg-black/5 px-1.5 py-0.5 text-[0.9em];
+  }
+}

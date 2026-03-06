@@ -1,2 +1,7 @@
-  .idea/
-  .plan/
+.idea/
+.plan/
+.env
+bin/
+devdata/
+web/dist/
+web/node_modules/
