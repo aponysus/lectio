@@ -54,6 +54,12 @@ func New(deps Dependencies) http.Handler {
 	engagementInquiryHandler := handlers.EngagementInquiryHandler{
 		Store: deps.Store,
 	}
+	claimHandler := handlers.ClaimHandler{
+		Store: deps.Store,
+	}
+	synthesisHandler := handlers.SynthesisHandler{
+		Store: deps.Store,
+	}
 
 	router.Route("/api", func(r chi.Router) {
 		r.Use(appmiddleware.EnsureCSRF(deps.Auth))
@@ -72,9 +78,16 @@ func New(deps Dependencies) http.Handler {
 			protected.Get("/engagements", engagementHandler.List)
 			protected.Get("/engagements/{engagementID}", engagementHandler.Get)
 			protected.Get("/engagements/{engagementID}/inquiries", engagementInquiryHandler.List)
+			protected.Get("/engagements/{engagementID}/claims", claimHandler.ListEngagementClaims)
 			protected.Get("/inquiries", inquiryHandler.List)
+			protected.Get("/inquiries/eligible-for-synthesis", inquiryHandler.ListEligibleForSynthesis)
 			protected.Get("/inquiries/{inquiryID}", inquiryHandler.Get)
 			protected.Get("/inquiries/{inquiryID}/engagements", inquiryHandler.ListEngagements)
+			protected.Get("/inquiries/{inquiryID}/claims", claimHandler.ListInquiryClaims)
+			protected.Get("/inquiries/{inquiryID}/syntheses", synthesisHandler.ListInquirySyntheses)
+			protected.Get("/claims/{claimID}", claimHandler.Get)
+			protected.Get("/syntheses", synthesisHandler.List)
+			protected.Get("/syntheses/{synthesisID}", synthesisHandler.Get)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/sources", sourceHandler.Create)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/sources/{sourceID}", sourceHandler.Update)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/sources/{sourceID}", sourceHandler.Archive)
@@ -85,6 +98,13 @@ func New(deps Dependencies) http.Handler {
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/inquiries", inquiryHandler.Create)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/inquiries/{inquiryID}", inquiryHandler.Update)
 			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/inquiries/{inquiryID}", inquiryHandler.Archive)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/claims", claimHandler.Create)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/claims/{claimID}", claimHandler.Update)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/claims/{claimID}/inquiries", claimHandler.ReplaceInquiries)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/claims/{claimID}", claimHandler.Archive)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Post("/syntheses", synthesisHandler.Create)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Put("/syntheses/{synthesisID}", synthesisHandler.Update)
+			protected.With(appmiddleware.RequireCSRF(deps.Auth)).Delete("/syntheses/{synthesisID}", synthesisHandler.Archive)
 		})
 	})
 

@@ -1,17 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  archiveClaim,
+  createClaim,
   createEngagement,
   createInquiry,
   getEngagement,
+  listEngagementClaims,
   listEngagementInquiries,
   listInquiries,
   listSources,
+  replaceClaimInquiries,
   type Engagement,
+  type Claim,
+  type ClaimCreateInput,
+  type ClaimUpdateInput,
   type Inquiry,
   type InquiryInput,
   type Source,
   replaceEngagementInquiries,
+  updateClaim,
   updateEngagement,
 } from '../../api/client'
 import { EngagementForm, type EngagementFormSubmission } from '../../components/engagements/EngagementForm'
@@ -29,6 +37,7 @@ export function EngagementFormPage({ mode }: EngagementFormPageProps) {
   const defaultSourceID = searchParams.get('sourceId') ?? undefined
 
   const [sources, setSources] = useState<Source[]>([])
+  const [claims, setClaims] = useState<Claim[]>([])
   const [inquiries, setInquiries] = useState<Inquiry[]>([])
   const [linkedInquiryIDs, setLinkedInquiryIDs] = useState<string[]>([])
   const [engagement, setEngagement] = useState<Engagement | null>(null)
@@ -43,17 +52,19 @@ export function EngagementFormPage({ mode }: EngagementFormPageProps) {
 
     ;(async () => {
       try {
-        const [nextSources, nextInquiries, nextEngagement, nextLinkedInquiries] = await Promise.all([
+        const [nextSources, nextInquiries, nextEngagement, nextLinkedInquiries, nextClaims] = await Promise.all([
           listSources({ limit: 100, sort: 'title' }),
           listInquiries({ limit: 100 }),
           mode === 'edit' && engagementId ? getEngagement(engagementId) : Promise.resolve(null),
           mode === 'edit' && engagementId ? listEngagementInquiries(engagementId) : Promise.resolve([]),
+          mode === 'edit' && engagementId ? listEngagementClaims(engagementId) : Promise.resolve([]),
         ])
         if (!cancelled) {
           setSources(nextSources)
           setInquiries(nextInquiries)
           setEngagement(nextEngagement)
           setLinkedInquiryIDs(nextLinkedInquiries.map((inquiry) => inquiry.id))
+          setClaims(nextClaims)
         }
       } catch (err) {
         if (!cancelled) {
@@ -95,6 +106,25 @@ export function EngagementFormPage({ mode }: EngagementFormPageProps) {
           : await updateEngagement(engagementId ?? '', submission.engagement)
 
       await replaceEngagementInquiries(saved.id, submission.inquiry_ids)
+
+      const retainedClaimIDs = new Set<string>()
+      for (const claim of submission.claims) {
+        if (claim.claim_id) {
+          const updated = await updateClaim(claim.claim_id, toClaimUpdateInput(claim, saved.id))
+          await replaceClaimInquiries(updated.id, submission.inquiry_ids)
+          retainedClaimIDs.add(updated.id)
+          continue
+        }
+
+        const created = await createClaim(toClaimCreateInput(claim, saved.id, submission.inquiry_ids))
+        retainedClaimIDs.add(created.id)
+      }
+
+      for (const existingClaim of claims) {
+        if (!retainedClaimIDs.has(existingClaim.id)) {
+          await archiveClaim(existingClaim.id)
+        }
+      }
 
       navigate(`/engagements/${saved.id}`)
     } catch (err) {
@@ -167,6 +197,7 @@ export function EngagementFormPage({ mode }: EngagementFormPageProps) {
 
       <EngagementForm
         engagement={engagement}
+        claims={claims}
         sources={sources}
         inquiries={inquiries}
         linkedInquiryIDs={linkedInquiryIDs}
@@ -179,4 +210,34 @@ export function EngagementFormPage({ mode }: EngagementFormPageProps) {
       />
     </div>
   )
+}
+
+function toClaimCreateInput(
+  claim: EngagementFormSubmission['claims'][number],
+  engagementID: string,
+  inquiryIDs: string[],
+): ClaimCreateInput {
+  return {
+    text: claim.text,
+    claim_type: claim.claim_type,
+    confidence: claim.confidence,
+    status: claim.status,
+    origin_engagement_id: engagementID,
+    notes: claim.notes,
+    inquiry_ids: inquiryIDs,
+  }
+}
+
+function toClaimUpdateInput(
+  claim: EngagementFormSubmission['claims'][number],
+  engagementID: string,
+): ClaimUpdateInput {
+  return {
+    text: claim.text,
+    claim_type: claim.claim_type,
+    confidence: claim.confidence,
+    status: claim.status,
+    origin_engagement_id: engagementID,
+    notes: claim.notes,
+  }
 }

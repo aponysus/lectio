@@ -78,6 +78,7 @@ export type Inquiry = {
   archived_at?: string
   engagement_count: number
   claim_count: number
+  synthesis_count: number
   latest_activity?: string
 }
 
@@ -101,6 +102,78 @@ export type ListInquiriesFilters = {
   q?: string
   status?: string
   limit?: number
+}
+
+export const CLAIM_TYPES = ['OBSERVATION', 'INTERPRETATION', 'PERSONAL_VIEW', 'QUESTION', 'HYPOTHESIS'] as const
+
+export type ClaimType = (typeof CLAIM_TYPES)[number]
+
+export const CLAIM_STATUSES = ['ACTIVE', 'TENTATIVE', 'REVISED', 'ABANDONED'] as const
+
+export type ClaimStatus = (typeof CLAIM_STATUSES)[number]
+
+export type Claim = {
+  id: string
+  text: string
+  claim_type: ClaimType
+  confidence?: number
+  status: ClaimStatus
+  origin_engagement_id?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+  archived_at?: string
+  origin?: {
+    engagement_id: string
+    source_id: string
+    source_title: string
+    source_medium: SourceMedium
+    portion_label?: string
+  }
+}
+
+export type ClaimCreateInput = {
+  text: string
+  claim_type: ClaimType
+  confidence: number | null
+  status: ClaimStatus
+  origin_engagement_id: string
+  notes: string
+  inquiry_ids: string[]
+}
+
+export type ClaimUpdateInput = {
+  text: string
+  claim_type: ClaimType
+  confidence: number | null
+  status: ClaimStatus
+  origin_engagement_id: string
+  notes: string
+}
+
+export const SYNTHESIS_TYPES = ['CHECKPOINT', 'COMPARISON', 'POSITION'] as const
+
+export type SynthesisType = (typeof SYNTHESIS_TYPES)[number]
+
+export type Synthesis = {
+  id: string
+  title: string
+  body: string
+  type: SynthesisType
+  inquiry_id: string
+  notes?: string
+  created_at: string
+  updated_at: string
+  archived_at?: string
+  inquiry?: InquirySummary
+}
+
+export type SynthesisInput = {
+  title: string
+  body: string
+  type: SynthesisType
+  inquiry_id: string
+  notes: string
 }
 
 export const ACCESS_MODES = [
@@ -332,6 +405,40 @@ export async function archiveInquiry(id: string): Promise<void> {
   })
 }
 
+export async function getClaim(id: string): Promise<Claim> {
+  const response = await request<Envelope<Claim>>(`/api/claims/${id}`)
+  return response.data
+}
+
+export async function createClaim(input: ClaimCreateInput): Promise<Claim> {
+  const response = await request<Envelope<Claim>>('/api/claims', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return response.data
+}
+
+export async function updateClaim(id: string, input: ClaimUpdateInput): Promise<Claim> {
+  const response = await request<Envelope<Claim>>(`/api/claims/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+  return response.data
+}
+
+export async function replaceClaimInquiries(id: string, inquiryIDs: string[]): Promise<void> {
+  await request(`/api/claims/${id}/inquiries`, {
+    method: 'PUT',
+    body: JSON.stringify({ inquiry_ids: inquiryIDs }),
+  })
+}
+
+export async function archiveClaim(id: string): Promise<void> {
+  await request(`/api/claims/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function listEngagements(filters: ListEngagementsFilters = {}): Promise<Engagement[]> {
   const query = new URLSearchParams()
 
@@ -390,9 +497,70 @@ export async function listEngagementInquiries(engagementId: string): Promise<Inq
   return response.data
 }
 
+export async function listEngagementClaims(engagementId: string): Promise<Claim[]> {
+  const response = await request<Envelope<Claim[]>>(`/api/engagements/${engagementId}/claims`)
+  return response.data
+}
+
 export async function replaceEngagementInquiries(engagementId: string, inquiryIDs: string[]): Promise<void> {
   await request(`/api/engagements/${engagementId}/inquiries`, {
     method: 'PUT',
     body: JSON.stringify({ inquiry_ids: inquiryIDs }),
+  })
+}
+
+export async function listInquiryClaims(inquiryId: string): Promise<Claim[]> {
+  const response = await request<Envelope<Claim[]>>(`/api/inquiries/${inquiryId}/claims`)
+  return response.data
+}
+
+export async function listSynthesisEligibleInquiries(limit = 6): Promise<Inquiry[]> {
+  const query = new URLSearchParams()
+  query.set('limit', String(limit))
+
+  const response = await request<Envelope<Inquiry[]>>(`/api/inquiries/eligible-for-synthesis?${query.toString()}`)
+  return response.data
+}
+
+export async function listSyntheses(limit = 50): Promise<Synthesis[]> {
+  const query = new URLSearchParams()
+  query.set('limit', String(limit))
+
+  const response = await request<Envelope<Synthesis[]>>(`/api/syntheses?${query.toString()}`)
+  return response.data
+}
+
+export async function listInquirySyntheses(inquiryId: string, limit = 50): Promise<Synthesis[]> {
+  const query = new URLSearchParams()
+  query.set('limit', String(limit))
+
+  const response = await request<Envelope<Synthesis[]>>(`/api/inquiries/${inquiryId}/syntheses?${query.toString()}`)
+  return response.data
+}
+
+export async function getSynthesis(id: string): Promise<Synthesis> {
+  const response = await request<Envelope<Synthesis>>(`/api/syntheses/${id}`)
+  return response.data
+}
+
+export async function createSynthesis(input: SynthesisInput): Promise<Synthesis> {
+  const response = await request<Envelope<Synthesis>>('/api/syntheses', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return response.data
+}
+
+export async function updateSynthesis(id: string, input: SynthesisInput): Promise<Synthesis> {
+  const response = await request<Envelope<Synthesis>>(`/api/syntheses/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+  return response.data
+}
+
+export async function archiveSynthesis(id: string): Promise<void> {
+  await request(`/api/syntheses/${id}`, {
+    method: 'DELETE',
   })
 }

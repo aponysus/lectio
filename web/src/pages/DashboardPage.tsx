@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { type Engagement, getSystemStatus, listEngagements, type SystemStatus } from '../api/client'
+import {
+  type Engagement,
+  getSystemStatus,
+  type Inquiry,
+  listEngagements,
+  listSynthesisEligibleInquiries,
+  type SystemStatus,
+} from '../api/client'
 import { EngagementCard } from '../components/engagements/EngagementCard'
 import { EmptyState } from '../components/shared/EmptyState'
 
 export function DashboardPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [recentEngagements, setRecentEngagements] = useState<Engagement[]>([])
+  const [eligibleInquiries, setEligibleInquiries] = useState<Inquiry[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -14,13 +22,15 @@ export function DashboardPage() {
 
     ;(async () => {
       try {
-        const [nextStatus, nextRecentEngagements] = await Promise.all([
+        const [nextStatus, nextRecentEngagements, nextEligibleInquiries] = await Promise.all([
           getSystemStatus(),
           listEngagements({ limit: 4 }),
+          listSynthesisEligibleInquiries(4),
         ])
         if (!cancelled) {
           setStatus(nextStatus)
           setRecentEngagements(nextRecentEngagements)
+          setEligibleInquiries(nextEligibleInquiries)
         }
       } catch (err) {
         if (!cancelled) {
@@ -37,11 +47,12 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-8 shadow-card backdrop-blur lg:px-8">
-        <p className="text-xs uppercase tracking-[0.3em] text-accent/80">Inquiry loop</p>
-        <h2 className="mt-3 font-display text-4xl text-ink">M4 inquiry workspaces are live</h2>
+        <p className="text-xs uppercase tracking-[0.3em] text-accent/80">Sharpening loop</p>
+        <h2 className="mt-3 font-display text-4xl text-ink">M6 synthesis is live</h2>
         <p className="mt-4 max-w-3xl text-base leading-7 text-ink/72">
-          The core MVP path now works through inquiry organization: protected sessions, source records, engagement
-          capture, inquiry pages, and the ability to attach source work to live questions during capture.
+          The core MVP path now moves past collection into sharper thinking: protected sessions, source records,
+          engagement capture, inquiry workspaces, explicit claims extracted from reflection, and inquiry-linked
+          syntheses that compress what the work now seems to say.
         </p>
       </section>
 
@@ -54,14 +65,20 @@ export function DashboardPage() {
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <article className="rounded-[2rem] border border-black/5 bg-white/70 px-6 py-7 shadow-card backdrop-blur">
-          <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Next build step</p>
-          <h3 className="mt-3 font-display text-3xl text-ink">Claim extraction is next</h3>
-          <ul className="mt-5 space-y-3 text-sm leading-6 text-ink/75">
-            <li>Let each engagement produce one to three explicit claims or open questions.</li>
-            <li>Connect those claims back to the inquiry workspace they belong to.</li>
-            <li>Sharpen reflection without turning capture into bureaucracy.</li>
-            <li>Keep synthesis downstream so there is real material to compress.</li>
-          </ul>
+          <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Synthesis prompts</p>
+          <h3 className="mt-3 font-display text-3xl text-ink">Inquiries ready for compression</h3>
+          {eligibleInquiries.length === 0 ? (
+            <p className="mt-5 text-sm leading-7 text-ink/74">
+              Nothing is over the synthesis threshold right now. Once an inquiry reaches three linked engagements or
+              two linked claims without a synthesis, it will surface here.
+            </p>
+          ) : (
+            <div className="mt-5 space-y-4">
+              {eligibleInquiries.map((inquiry) => (
+                <SynthesisPromptCard key={inquiry.id} inquiry={inquiry} />
+              ))}
+            </div>
+          )}
         </article>
 
         <article className="rounded-[2rem] border border-black/5 bg-stone-950 px-6 py-7 text-stone-100 shadow-card">
@@ -121,6 +138,37 @@ export function DashboardPage() {
           </div>
         </section>
       )}
+    </div>
+  )
+}
+
+function SynthesisPromptCard({ inquiry }: { inquiry: Inquiry }) {
+  return (
+    <div className="rounded-[1.5rem] bg-black/[0.03] px-4 py-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.2em] text-accent/75">{inquiry.status.toLowerCase().replace(/_/g, ' ')}</p>
+          <h4 className="mt-2 font-display text-2xl text-ink">{inquiry.title}</h4>
+          <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink/78">{inquiry.question}</p>
+          <p className="mt-3 text-xs uppercase tracking-[0.18em] text-ink/60">
+            {inquiry.engagement_count} engagements • {inquiry.claim_count} claims
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to={`/syntheses/new?inquiryId=${inquiry.id}`}
+            className="rounded-xl bg-pine px-3 py-2 text-sm text-white transition hover:bg-pine/90"
+          >
+            Write synthesis
+          </Link>
+          <Link
+            to={`/inquiries/${inquiry.id}`}
+            className="rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-sm text-ink transition hover:bg-white"
+          >
+            Open inquiry
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }

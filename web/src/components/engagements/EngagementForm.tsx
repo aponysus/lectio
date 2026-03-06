@@ -1,17 +1,56 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { type ReactNode, useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import {
   ACCESS_MODES,
+  CLAIM_STATUSES,
+  CLAIM_TYPES,
   INQUIRY_STATUSES,
   type AccessMode,
+  type Claim,
+  type ClaimStatus,
+  type ClaimType,
   type Engagement,
   type EngagementInput,
   type Inquiry,
   type InquiryInput,
   type Source,
 } from '../../api/client'
+
+const claimDraftSchema = z
+  .object({
+    claim_id: z.string().optional(),
+    text: z.string().max(4000, 'Claim text must be 4000 characters or fewer'),
+    claim_type: z.union([z.literal(''), z.enum(CLAIM_TYPES)]),
+    confidence: z
+      .string()
+      .refine((value) => value === '' || /^[1-5]$/.test(value), 'Confidence must be between 1 and 5'),
+    status: z.union([z.literal(''), z.enum(CLAIM_STATUSES)]),
+    notes: z.string().max(4000, 'Claim notes must be 4000 characters or fewer'),
+  })
+  .superRefine((value, ctx) => {
+    const hasAnyValue =
+      value.text.trim() !== '' ||
+      value.claim_type !== '' ||
+      value.confidence !== '' ||
+      value.status !== '' ||
+      value.notes.trim() !== ''
+
+    if (!hasAnyValue) {
+      return
+    }
+
+    if (value.text.trim() === '') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['text'], message: 'Claim text is required' })
+    }
+    if (value.claim_type === '') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['claim_type'], message: 'Claim type is required' })
+    }
+    if (value.status === '') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['status'], message: 'Claim status is required' })
+    }
+  })
 
 const engagementFormSchema = z.object({
   source_id: z.string().min(1, 'Source is required'),
@@ -27,17 +66,29 @@ const engagementFormSchema = z.object({
     .refine((value) => value === '' || /^[1-5]$/.test(value), 'Revisit priority must be between 1 and 5'),
   is_reread_or_rewatch: z.boolean(),
   inquiry_ids: z.array(z.string()),
+  claims: z.array(claimDraftSchema).max(3, 'You can add at most three claims during capture'),
 })
 
 type EngagementFormValues = z.infer<typeof engagementFormSchema>
 
+export type EngagementClaimSubmission = {
+  claim_id?: string
+  text: string
+  claim_type: ClaimType
+  confidence: number | null
+  status: ClaimStatus
+  notes: string
+}
+
 export type EngagementFormSubmission = {
   engagement: EngagementInput
   inquiry_ids: string[]
+  claims: EngagementClaimSubmission[]
 }
 
 type EngagementFormProps = {
   engagement?: Engagement | null
+  claims: Claim[]
   sources: Source[]
   inquiries: Inquiry[]
   linkedInquiryIDs: string[]
@@ -51,6 +102,7 @@ type EngagementFormProps = {
 
 export function EngagementForm({
   engagement,
+  claims,
   sources,
   inquiries,
   linkedInquiryIDs,
@@ -73,15 +125,21 @@ export function EngagementForm({
     reset,
     watch,
     setValue,
+    control,
     formState: { errors },
   } = useForm<EngagementFormValues>({
     resolver: zodResolver(engagementFormSchema),
-    defaultValues: toFormValues(engagement, defaultSourceID, linkedInquiryIDs),
+    defaultValues: toFormValues(engagement, claims, defaultSourceID, linkedInquiryIDs),
   })
 
   useEffect(() => {
-    reset(toFormValues(engagement, defaultSourceID, linkedInquiryIDs))
-  }, [defaultSourceID, engagement, linkedInquiryIDs, reset])
+    reset(toFormValues(engagement, claims, defaultSourceID, linkedInquiryIDs))
+  }, [claims, defaultSourceID, engagement, linkedInquiryIDs, reset])
+
+  const claimFields = useFieldArray({
+    control,
+    name: 'claims',
+  })
 
   const submit = async (values: EngagementFormValues) => {
     await onSubmit({
@@ -98,6 +156,16 @@ export function EngagementForm({
         is_reread_or_rewatch: values.is_reread_or_rewatch,
       },
       inquiry_ids: values.inquiry_ids,
+      claims: values.claims
+        .filter((claim) => hasAnyClaimValue(claim))
+        .map((claim) => ({
+          claim_id: claim.claim_id,
+          text: claim.text.trim(),
+          claim_type: claim.claim_type as ClaimType,
+          confidence: claim.confidence === '' ? null : Number(claim.confidence),
+          status: claim.status as ClaimStatus,
+          notes: claim.notes.trim(),
+        })),
     })
   }
 
@@ -294,6 +362,115 @@ export function EngagementForm({
       </section>
 
       <section className="rounded-[2rem] border border-black/5 bg-white/75 p-6 shadow-card backdrop-blur">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Claims</p>
+            <h3 className="mt-2 font-display text-3xl text-ink">Extract one to three sharper takeaways</h3>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/74">
+              Keep this lightweight. Claims can be tentative, personal, interpretive, or openly framed as questions.
+            </p>
+          </div>
+          {claimFields.fields.length < 3 ? (
+            <button
+              type="button"
+              onClick={() => claimFields.append(emptyClaimDraft())}
+              className="rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-ink transition hover:bg-white"
+            >
+              Add claim
+            </button>
+          ) : null}
+        </div>
+
+        {claimFields.fields.length === 0 ? (
+          <p className="mt-5 rounded-2xl bg-black/[0.03] px-4 py-4 text-sm leading-6 text-ink/72">
+            No inline claims yet. Add one if the reflection has already sharpened into a proposition or question.
+          </p>
+        ) : (
+          <div className="mt-5 space-y-4">
+            {claimFields.fields.map((field, index) => (
+              <article key={field.id} className="rounded-[1.5rem] border border-black/8 bg-canvas/60 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-accent/75">Claim {index + 1}</p>
+                    <p className="mt-2 text-sm leading-6 text-ink/72">
+                      Keep it concise enough to revise later without rereading the whole reflection.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => claimFields.remove(index)}
+                    className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 transition hover:bg-red-100"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <Field className="mt-4" label="Claim text" error={errors.claims?.[index]?.text?.message}>
+                  <textarea
+                    {...register(`claims.${index}.text`)}
+                    rows={4}
+                    className="w-full rounded-2xl border border-black/10 bg-white/85 px-4 py-3 outline-none transition focus:border-accent"
+                  />
+                </Field>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <Field label="Claim type" error={errors.claims?.[index]?.claim_type?.message}>
+                    <select
+                      {...register(`claims.${index}.claim_type`)}
+                      className="w-full rounded-2xl border border-black/10 bg-white/85 px-4 py-3 outline-none transition focus:border-accent"
+                    >
+                      <option value="">Select type</option>
+                      {CLAIM_TYPES.map((claimType) => (
+                        <option key={claimType} value={claimType}>
+                          {claimType.toLowerCase().replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Status" error={errors.claims?.[index]?.status?.message}>
+                    <select
+                      {...register(`claims.${index}.status`)}
+                      className="w-full rounded-2xl border border-black/10 bg-white/85 px-4 py-3 outline-none transition focus:border-accent"
+                    >
+                      <option value="">Select status</option>
+                      {CLAIM_STATUSES.map((status) => (
+                        <option key={status} value={status}>
+                          {status.toLowerCase().replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Confidence" error={errors.claims?.[index]?.confidence?.message}>
+                    <select
+                      {...register(`claims.${index}.confidence`)}
+                      className="w-full rounded-2xl border border-black/10 bg-white/85 px-4 py-3 outline-none transition focus:border-accent"
+                    >
+                      <option value="">Not set</option>
+                      {[1, 2, 3, 4, 5].map((confidence) => (
+                        <option key={confidence} value={confidence}>
+                          {confidence}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+
+                <Field className="mt-4" label="Notes" error={errors.claims?.[index]?.notes?.message}>
+                  <textarea
+                    {...register(`claims.${index}.notes`)}
+                    rows={3}
+                    className="w-full rounded-2xl border border-black/10 bg-white/85 px-4 py-3 outline-none transition focus:border-accent"
+                  />
+                </Field>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-[2rem] border border-black/5 bg-white/75 p-6 shadow-card backdrop-blur">
         <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Context</p>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <Field label="Source language" error={errors.source_language?.message}>
@@ -384,6 +561,7 @@ function Field({
 
 function toFormValues(
   engagement?: Engagement | null,
+  claims: Claim[] = [],
   defaultSourceID?: string,
   linkedInquiryIDs: string[] = [],
 ): EngagementFormValues {
@@ -399,7 +577,36 @@ function toFormValues(
     revisit_priority: engagement?.revisit_priority ? String(engagement.revisit_priority) : '',
     is_reread_or_rewatch: engagement?.is_reread_or_rewatch ?? false,
     inquiry_ids: linkedInquiryIDs,
+    claims: claims.map((claim) => ({
+      claim_id: claim.id,
+      text: claim.text,
+      claim_type: claim.claim_type,
+      confidence: claim.confidence ? String(claim.confidence) : '',
+      status: claim.status,
+      notes: claim.notes ?? '',
+    })),
   }
+}
+
+function emptyClaimDraft(): EngagementFormValues['claims'][number] {
+  return {
+    claim_id: undefined,
+    text: '',
+    claim_type: '',
+    confidence: '',
+    status: '',
+    notes: '',
+  }
+}
+
+function hasAnyClaimValue(claim: EngagementFormValues['claims'][number]) {
+  return (
+    claim.text.trim() !== '' ||
+    claim.claim_type !== '' ||
+    claim.confidence !== '' ||
+    claim.status !== '' ||
+    claim.notes.trim() !== ''
+  )
 }
 
 function toDatetimeLocal(value: string) {

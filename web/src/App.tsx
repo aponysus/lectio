@@ -8,10 +8,12 @@ import { InquiryDetailPage } from './pages/inquiries/InquiryDetailPage'
 import { InquiryFormPage } from './pages/inquiries/InquiryFormPage'
 import { InquiriesPage } from './pages/inquiries/InquiriesPage'
 import { LoginPage } from './pages/LoginPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
 import { SourceDetailPage } from './pages/sources/SourceDetailPage'
 import { SourceFormPage } from './pages/sources/SourceFormPage'
 import { SourcesPage } from './pages/sources/SourcesPage'
+import { SynthesisDetailPage } from './pages/syntheses/SynthesisDetailPage'
+import { SynthesisFormPage } from './pages/syntheses/SynthesisFormPage'
+import { SynthesesPage } from './pages/syntheses/SynthesesPage'
 
 function ProtectedLayout() {
   const { loading, session } = useSession()
@@ -56,10 +58,10 @@ function AppRoutes() {
         <Route path="inquiries/new" element={<InquiryFormPage mode="create" />} />
         <Route path="inquiries/:inquiryId" element={<InquiryDetailPage />} />
         <Route path="inquiries/:inquiryId/edit" element={<InquiryFormPage mode="edit" />} />
-        <Route
-          path="syntheses"
-          element={<PlaceholderPage title="Syntheses" body="Synthesis remains in MVP, but not before the core capture loop exists." />}
-        />
+        <Route path="syntheses" element={<SynthesesPage />} />
+        <Route path="syntheses/new" element={<SynthesisFormPage mode="create" />} />
+        <Route path="syntheses/:synthesisId" element={<SynthesisDetailPage />} />
+        <Route path="syntheses/:synthesisId/edit" element={<SynthesisFormPage mode="edit" />} />
       </Route>
       <Route path="*" element={<Navigate to={session.authenticated ? '/' : '/login'} replace />} />
     </Routes>

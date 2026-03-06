@@ -29,6 +29,7 @@ type Inquiry struct {
 	ArchivedAt      *string `json:"archived_at,omitempty"`
 	EngagementCount int     `json:"engagement_count"`
 	ClaimCount      int     `json:"claim_count"`
+	SynthesisCount  int     `json:"synthesis_count"`
 	LatestActivity  *string `json:"latest_activity,omitempty"`
 }
 

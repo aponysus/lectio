@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="text-xs uppercase tracking-[0.3em] text-accent/80">Lectio</p>
             <h1 className="mt-2 font-display text-3xl text-ink">Built for serious source work</h1>
             <p className="mt-3 text-sm leading-6 text-ink/70">
-              The MVP loop now includes live source records, fast engagement capture, and inquiry workspaces.
+              The MVP loop now includes live source records, engagement capture, inquiry workspaces, claims, and synthesis.
             </p>
           </div>
 
@@ -38,9 +38,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <span>{link.label}</span>
                 <span className="text-xs opacity-70">
-                  {link.to === '/' || link.to === '/sources' || link.to === '/engagements/new' || link.to === '/inquiries'
+                  {link.to === '/' || link.to === '/sources' || link.to === '/engagements/new' || link.to === '/inquiries' || link.to === '/syntheses'
                     ? 'Live'
-                    : 'Next'}
+                    : 'Later'}
                 </span>
               </NavLink>
             ))}

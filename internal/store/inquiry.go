@@ -72,13 +72,52 @@ func (s *Store) ListInquiries(ctx context.Context, filters model.InquiryFilters)
 				WHEN 'SYNTHESIZED' THEN 2
 				ELSE 3
 			END,
-			COALESCE(stats.latest_activity, i.updated_at) DESC,
+			COALESCE(` + inquiryLatestActivityExpr + `, i.updated_at) DESC,
 			LOWER(i.title) ASC
 		LIMIT ?
 	`
 	args = append(args, filters.Limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	inquiries := []model.Inquiry{}
+	for rows.Next() {
+		inquiry, err := scanInquiry(rows)
+		if err != nil {
+			return nil, err
+		}
+		inquiries = append(inquiries, inquiry)
+	}
+
+	return inquiries, rows.Err()
+}
+
+func (s *Store) ListEligibleForSynthesisInquiries(ctx context.Context, limit int) ([]model.Inquiry, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	rows, err := s.db.QueryContext(ctx, inquirySelectQuery+`
+		WHERE
+			i.archived_at IS NULL
+			AND i.status != 'ABANDONED'
+			AND (
+				COALESCE(engagement_stats.engagement_count, 0) >= 3
+				OR COALESCE(claim_stats.claim_count, 0) >= 2
+			)
+			AND COALESCE(synthesis_stats.synthesis_count, 0) = 0
+		ORDER BY
+			COALESCE(`+inquiryLatestActivityExpr+`, i.updated_at) DESC,
+			LOWER(i.title) ASC
+		LIMIT ?
+	`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -331,10 +370,12 @@ const inquirySelectQuery = `
 		CASE
 			WHEN i.archived_at IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%SZ', i.archived_at)
 		END AS archived_at,
-		COALESCE(stats.engagement_count, 0) AS engagement_count,
-		0 AS claim_count,
+		COALESCE(engagement_stats.engagement_count, 0) AS engagement_count,
+		COALESCE(claim_stats.claim_count, 0) AS claim_count,
+		COALESCE(synthesis_stats.synthesis_count, 0) AS synthesis_count,
 		CASE
-			WHEN stats.latest_activity IS NOT NULL THEN strftime('%Y-%m-%dT%H:%M:%SZ', stats.latest_activity)
+			WHEN ` + inquiryLatestActivityExpr + ` IS NULL THEN NULL
+			ELSE strftime('%Y-%m-%dT%H:%M:%SZ', ` + inquiryLatestActivityExpr + `)
 		END AS latest_activity
 	FROM inquiries i
 	LEFT JOIN (
@@ -345,8 +386,36 @@ const inquirySelectQuery = `
 		FROM engagement_inquiries ei
 		JOIN engagements e ON e.id = ei.engagement_id AND e.archived_at IS NULL
 		GROUP BY ei.inquiry_id
-	) stats ON stats.inquiry_id = i.id
+	) engagement_stats ON engagement_stats.inquiry_id = i.id
+	LEFT JOIN (
+		SELECT
+			ci.inquiry_id,
+			COUNT(c.id) AS claim_count,
+			MAX(datetime(c.updated_at)) AS latest_activity
+		FROM claim_inquiries ci
+		JOIN claims c ON c.id = ci.claim_id AND c.archived_at IS NULL
+		GROUP BY ci.inquiry_id
+	) claim_stats ON claim_stats.inquiry_id = i.id
+	LEFT JOIN (
+		SELECT
+			sy.inquiry_id,
+			COUNT(sy.id) AS synthesis_count,
+			MAX(datetime(sy.updated_at)) AS latest_activity
+		FROM syntheses sy
+		WHERE sy.archived_at IS NULL
+		GROUP BY sy.inquiry_id
+	) synthesis_stats ON synthesis_stats.inquiry_id = i.id
 `
+
+const inquiryLatestActivityExpr = `
+NULLIF(
+	MAX(
+		COALESCE(claim_stats.latest_activity, ''),
+		COALESCE(engagement_stats.latest_activity, ''),
+		COALESCE(synthesis_stats.latest_activity, '')
+	),
+	''
+)`
 
 type inquiryScanner interface {
 	Scan(dest ...any) error
@@ -373,6 +442,7 @@ func scanInquiry(scanner inquiryScanner) (model.Inquiry, error) {
 		&archivedAt,
 		&inquiry.EngagementCount,
 		&inquiry.ClaimCount,
+		&inquiry.SynthesisCount,
 		&latestActivity,
 	); err != nil {
 		return model.Inquiry{}, err

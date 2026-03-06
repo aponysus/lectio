@@ -65,6 +65,21 @@ func (h InquiryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteData(w, http.StatusOK, inquiry)
 }
 
+func (h InquiryHandler) ListEligibleForSynthesis(w http.ResponseWriter, r *http.Request) {
+	limit, ok := parseListLimit(w, r, 6)
+	if !ok {
+		return
+	}
+
+	inquiries, err := h.Store.ListEligibleForSynthesisInquiries(r.Context(), limit)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list synthesis-eligible inquiries")
+		return
+	}
+
+	httpx.WriteData(w, http.StatusOK, inquiries)
+}
+
 func (h InquiryHandler) ListEngagements(w http.ResponseWriter, r *http.Request) {
 	limit := 20
 	if raw := r.URL.Query().Get("limit"); raw != "" {

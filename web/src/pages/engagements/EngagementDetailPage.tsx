@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { archiveEngagement, getEngagement, listEngagementInquiries, type Engagement, type InquirySummary } from '../../api/client'
+import {
+  archiveEngagement,
+  getEngagement,
+  listEngagementClaims,
+  listEngagementInquiries,
+  type Claim,
+  type Engagement,
+  type InquirySummary,
+} from '../../api/client'
+import { ClaimCard } from '../../components/claims/ClaimCard'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { PageHeader } from '../../components/shared/PageHeader'
 
@@ -8,6 +17,7 @@ export function EngagementDetailPage() {
   const navigate = useNavigate()
   const { engagementId } = useParams()
   const [engagement, setEngagement] = useState<Engagement | null>(null)
+  const [claims, setClaims] = useState<Claim[]>([])
   const [inquiries, setInquiries] = useState<InquirySummary[]>([])
   const [loading, setLoading] = useState(true)
   const [archivePending, setArchivePending] = useState(false)
@@ -26,13 +36,15 @@ export function EngagementDetailPage() {
 
     ;(async () => {
       try {
-        const [nextEngagement, nextInquiries] = await Promise.all([
+        const [nextEngagement, nextInquiries, nextClaims] = await Promise.all([
           getEngagement(engagementId),
           listEngagementInquiries(engagementId),
+          listEngagementClaims(engagementId),
         ])
         if (!cancelled) {
           setEngagement(nextEngagement)
           setInquiries(nextInquiries)
+          setClaims(nextClaims)
         }
       } catch (err) {
         if (!cancelled) {
@@ -186,6 +198,28 @@ export function EngagementDetailPage() {
           </div>
         </article>
       </section>
+
+      {claims.length === 0 ? (
+        <section className="rounded-[2rem] border border-dashed border-black/10 bg-white/55 px-6 py-8 text-center shadow-card backdrop-blur">
+          <h3 className="font-display text-3xl text-ink">No claims from this engagement yet</h3>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-ink/70">
+            Claims arrive during capture now. Edit the engagement if this reflection is ready to sharpen into one to
+            three explicit propositions or questions.
+          </p>
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-accent/80">Claims</p>
+            <h3 className="mt-2 font-display text-3xl text-ink">Takeaways extracted from this engagement</h3>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-2">
+            {claims.map((claim) => (
+              <ClaimCard key={claim.id} claim={claim} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
