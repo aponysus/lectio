@@ -1,9 +1,2 @@
-.env
-*.db
-*.db-shm
-*.db-wal
-devdata/
-web/node_modules/
-web/.vite/
-.idea/
-.plan*
+  .idea/
+  .plan/
